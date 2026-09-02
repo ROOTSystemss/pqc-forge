@@ -1,0 +1,39 @@
+{
+  "schema": "pqc-forge.staging-manifest/v1",
+  "target": "isolated-staging-environment",
+  "runtimeReceipts": [
+    "../runtime-output/runtime-receipt.json"
+  ],
+  "endpointReceipts": [
+    "../endpoint-output/tls-receipt.json"
+  ],
+  "requirePqAuthentication": false,
+  "metrics": {
+    "handshakeErrorRatePct": 0.05,
+    "p95HandshakeLatencyMs": 85,
+    "cpuIncreasePct": 12,
+    "memoryIncreasePct": 8,
+    "soakMinutes": 120
+  },
+  "thresholds": {
+    "maxHandshakeErrorRatePct": 0.1,
+    "maxP95HandshakeLatencyMs": 100,
+    "maxCpuIncreasePct": 20,
+    "maxMemoryIncreasePct": 15,
+    "minSoakMinutes": 60
+  },
+  "rollback": {
+    "tested": true,
+    "recoverySeconds": 45,
+    "maxRecoverySeconds": 120
+  },
+  "canary": {
+    "trafficPercent": 5,
+    "monitoringConfigured": true,
+    "rollbackTriggersConfigured": true
+  },
+  "operatorApproval": {
+    "approved": true,
+    "approvedBy": "named-staging-owner"
+  }
+}

@@ -1,0 +1,27 @@
+name: Pinned public Nginx, HAProxy, and Apache corpus
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+  push:
+    paths:
+      - "src/validation.js"
+      - "src/pr-pack.js"
+      - "validation/corpus.json"
+      - ".github/workflows/public-corpus.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: node ./bin/pqc-forge.js validate-corpus ./validation/corpus.json --out ./validation-output

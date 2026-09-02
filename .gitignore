@@ -1,0 +1,9 @@
+.npm-cache/
+protocol-output/
+demo-pr-pack*/
+*.log
+*.pqc-forge.bak
+rootsystems-pqc-forge-*.tgz
+.local/
+release-output/
+dist/

@@ -1,0 +1,11 @@
+{
+  "schema": "pqc-forge.ignore/v1",
+  "suppressions": [
+    {
+      "ruleId": "QF-ALG-RSA",
+      "path": "test/fixtures/**",
+      "reason": "Intentional vulnerable test fixture; production paths remain in scope.",
+      "expires": "2026-12-31"
+    }
+  ]
+}

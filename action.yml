@@ -1,0 +1,151 @@
+name: PQC Forge Migration Gate
+description: Scan quantum-risk debt, search compatibility matrices, or gate a patched target and staged canary.
+inputs:
+  mode:
+    description: Run "scan" (default), "breaklab", "runtime", or "staging".
+    required: false
+    default: scan
+  target:
+    description: Repository path to scan.
+    required: false
+    default: .
+  sarif:
+    description: SARIF output path for scan mode.
+    required: false
+    default: pqc-forge-output/pqc-forge.sarif
+  report:
+    description: JSON scan report path for baselines and evidence history.
+    required: false
+    default: pqc-forge-output/pqc-forge-scan.json
+  baseline:
+    description: Optional approved PQC Forge scan JSON baseline.
+    required: false
+    default: ""
+  scenario:
+    description: Path to a BreakLab scenario JSON file.
+    required: false
+    default: scenarios/tls-migration-demo.json
+  budget:
+    description: Evaluations per BreakLab search strategy.
+    required: false
+    default: "64"
+  seed:
+    description: Reproducible BreakLab search seed.
+    required: false
+    default: "42"
+  output:
+    description: BreakLab or runtime evidence output directory.
+    required: false
+    default: pqc-forge-output
+  runtime_server:
+    description: Runtime mode server type (nginx, haproxy, or apache).
+    required: false
+    default: ""
+  runtime_config:
+    description: Patched configuration file to validate in runtime mode.
+    required: false
+    default: ""
+  openssl_executable:
+    description: OpenSSL executable available in the target runner environment.
+    required: false
+    default: openssl
+  server_executable:
+    description: Optional server executable override for runtime mode.
+    required: false
+    default: ""
+  runtime_target:
+    description: Evidence label for the staging target.
+    required: false
+    default: github-actions-staging
+  runtime_container:
+    description: Optional running staging container name for agentless runtime execution.
+    required: false
+    default: ""
+  runtime_container_config:
+    description: Configuration path inside runtime_container corresponding to runtime_config.
+    required: false
+    default: ""
+  docker_executable:
+    description: Docker CLI executable for container runtime mode.
+    required: false
+    default: docker
+  staging_manifest:
+    description: Staging acceptance manifest containing receipt paths, measured metrics, rollback, and canary controls.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Validate mode
+      shell: bash
+      env:
+        PQC_FORGE_MODE: ${{ inputs.mode }}
+      run: |
+        if [ "$PQC_FORGE_MODE" != "scan" ] && [ "$PQC_FORGE_MODE" != "breaklab" ] && [ "$PQC_FORGE_MODE" != "runtime" ] && [ "$PQC_FORGE_MODE" != "staging" ]; then
+          echo "mode must be scan, breaklab, runtime, or staging" >&2
+          exit 64
+        fi
+    - name: Run PQC repository gate
+      if: inputs.mode == 'scan'
+      shell: bash
+      env:
+        PQC_FORGE_TARGET: ${{ inputs.target }}
+        PQC_FORGE_SARIF: ${{ inputs.sarif }}
+        PQC_FORGE_REPORT: ${{ inputs.report }}
+        PQC_FORGE_BASELINE: ${{ inputs.baseline }}
+      run: |
+        args=(scan "$PQC_FORGE_TARGET" --sarif "$PQC_FORGE_SARIF" --report "$PQC_FORGE_REPORT")
+        if [ -n "$PQC_FORGE_BASELINE" ]; then args+=(--baseline "$PQC_FORGE_BASELINE"); fi
+        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" "${args[@]}"
+    - name: Run PQC BreakLab
+      if: inputs.mode == 'breaklab'
+      shell: bash
+      env:
+        PQC_FORGE_SCENARIO: ${{ inputs.scenario }}
+        PQC_FORGE_BUDGET: ${{ inputs.budget }}
+        PQC_FORGE_SEED: ${{ inputs.seed }}
+        PQC_FORGE_OUTPUT: ${{ inputs.output }}
+      run: |
+        scenario_path="$PQC_FORGE_SCENARIO"
+        if [ ! -f "$scenario_path" ]; then scenario_path="$GITHUB_ACTION_PATH/$scenario_path"; fi
+        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" breaklab "$scenario_path" --budget "$PQC_FORGE_BUDGET" --seed "$PQC_FORGE_SEED" --out "$PQC_FORGE_OUTPUT"
+    - name: Run target-runtime safety gate
+      if: inputs.mode == 'runtime'
+      shell: bash
+      env:
+        PQC_FORGE_RUNTIME_SERVER: ${{ inputs.runtime_server }}
+        PQC_FORGE_RUNTIME_CONFIG: ${{ inputs.runtime_config }}
+        PQC_FORGE_OPENSSL: ${{ inputs.openssl_executable }}
+        PQC_FORGE_SERVER_EXECUTABLE: ${{ inputs.server_executable }}
+        PQC_FORGE_RUNTIME_TARGET: ${{ inputs.runtime_target }}
+        PQC_FORGE_RUNTIME_CONTAINER: ${{ inputs.runtime_container }}
+        PQC_FORGE_RUNTIME_CONTAINER_CONFIG: ${{ inputs.runtime_container_config }}
+        PQC_FORGE_DOCKER_EXECUTABLE: ${{ inputs.docker_executable }}
+        PQC_FORGE_OUTPUT: ${{ inputs.output }}
+      run: |
+        if [ -z "$PQC_FORGE_RUNTIME_SERVER" ] || [ -z "$PQC_FORGE_RUNTIME_CONFIG" ]; then
+          echo "runtime_server and runtime_config are required in runtime mode" >&2
+          exit 64
+        fi
+        args=(runtime-probe "$PQC_FORGE_RUNTIME_SERVER" --config "$PQC_FORGE_RUNTIME_CONFIG" --openssl "$PQC_FORGE_OPENSSL" --target "$PQC_FORGE_RUNTIME_TARGET" --out "$PQC_FORGE_OUTPUT")
+        if [ -n "$PQC_FORGE_SERVER_EXECUTABLE" ]; then args+=(--server-executable "$PQC_FORGE_SERVER_EXECUTABLE"); fi
+        if [ -n "$PQC_FORGE_RUNTIME_CONTAINER" ]; then
+          if [ -z "$PQC_FORGE_RUNTIME_CONTAINER_CONFIG" ]; then echo "runtime_container_config is required with runtime_container" >&2; exit 64; fi
+          args+=(--container "$PQC_FORGE_RUNTIME_CONTAINER" --container-config "$PQC_FORGE_RUNTIME_CONTAINER_CONFIG" --docker "$PQC_FORGE_DOCKER_EXECUTABLE")
+        elif [ -n "$PQC_FORGE_RUNTIME_CONTAINER_CONFIG" ]; then
+          echo "runtime_container is required with runtime_container_config" >&2
+          exit 64
+        fi
+        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" "${args[@]}"
+    - name: Run staging acceptance gate
+      if: inputs.mode == 'staging'
+      shell: bash
+      env:
+        PQC_FORGE_STAGING_MANIFEST: ${{ inputs.staging_manifest }}
+        PQC_FORGE_OUTPUT: ${{ inputs.output }}
+      run: |
+        if [ -z "$PQC_FORGE_STAGING_MANIFEST" ]; then
+          echo "staging_manifest is required in staging mode" >&2
+          exit 64
+        fi
+        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" staging-gate "$PQC_FORGE_STAGING_MANIFEST" --out "$PQC_FORGE_OUTPUT"

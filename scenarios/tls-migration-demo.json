@@ -1,0 +1,40 @@
+{
+  "schema": "pqc-forge.breaklab-scenario/v1",
+  "name": "hybrid-tls-migration-demo",
+  "releaseExpectation": { "verdictPass": false, "minFailureModes": 6 },
+  "baseHandshakeBytes": 720,
+  "dimensions": {
+    "client": ["modern-pq", "legacy-classical", "pq-kex-classical-auth"],
+    "server": ["pq-preferred", "classical-first", "pq-only"],
+    "certificate": ["ml-dsa-65", "rsa-pss"],
+    "network": ["datacenter", "constrained-edge"],
+    "allowClassicalFallback": [false, true]
+  },
+  "profiles": {
+    "clients": {
+      "modern-pq": { "groups": ["X25519MLKEM768", "X25519"], "signatures": ["ML-DSA-65", "RSA-PSS"] },
+      "legacy-classical": { "groups": ["X25519", "prime256v1"], "signatures": ["RSA-PSS", "ECDSA"] },
+      "pq-kex-classical-auth": { "groups": ["X25519MLKEM768", "X25519"], "signatures": ["RSA-PSS"] }
+    },
+    "servers": {
+      "pq-preferred": { "groups": ["X25519MLKEM768", "X25519"] },
+      "classical-first": { "groups": ["X25519", "X25519MLKEM768"] },
+      "pq-only": { "groups": ["X25519MLKEM768"] }
+    },
+    "certificates": {
+      "ml-dsa-65": { "signature": "ML-DSA-65", "bytes": 3309 },
+      "rsa-pss": { "signature": "RSA-PSS", "bytes": 512 }
+    },
+    "networks": {
+      "datacenter": { "mtu": 1500, "maxFragments": 6, "baseLatencyMs": 8, "fragmentCostMs": 1.2 },
+      "constrained-edge": { "mtu": 900, "maxFragments": 4, "baseLatencyMs": 70, "fragmentCostMs": 12 }
+    }
+  },
+  "algorithmSizes": {
+    "keyExchangeBytes": { "X25519MLKEM768": 1120, "X25519": 64, "prime256v1": 65 },
+    "signatureBytes": { "ML-DSA-65": 3309, "RSA-PSS": 512, "ECDSA": 72 },
+    "keyExchangeCostMs": { "X25519MLKEM768": 3.8, "X25519": 0.4, "prime256v1": 0.7 },
+    "signatureVerifyCostMs": { "ML-DSA-65": 2.8, "RSA-PSS": 0.8, "ECDSA": 0.5 }
+  },
+  "policy": { "requirePqKeyExchange": true, "requirePqAuthentication": true, "maxHandshakeLatencyMs": 110, "failSeverity": 80 }
+}

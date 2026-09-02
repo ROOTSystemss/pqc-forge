@@ -1,0 +1,36 @@
+services:
+  classical-rsa:
+    image: pqc-forge-protocol-lab:0.10.0
+    build:
+      context: .
+    environment:
+      CERTIFICATE_ALGORITHM: RSA
+      TLS_GROUPS: X25519
+      SERVER_NAME: classical-rsa
+
+  hybrid-rsa:
+    image: pqc-forge-protocol-lab:0.10.0
+    environment:
+      CERTIFICATE_ALGORITHM: RSA
+      TLS_GROUPS: X25519MLKEM768:X25519
+      SERVER_NAME: hybrid-rsa
+
+  pqonly-rsa:
+    image: pqc-forge-protocol-lab:0.10.0
+    environment:
+      CERTIFICATE_ALGORITHM: RSA
+      TLS_GROUPS: X25519MLKEM768
+      SERVER_NAME: pqonly-rsa
+
+  hybrid-mldsa:
+    image: pqc-forge-protocol-lab:0.10.0
+    environment:
+      CERTIFICATE_ALGORITHM: ML-DSA-65
+      TLS_GROUPS: X25519MLKEM768:X25519
+      SERVER_NAME: hybrid-mldsa
+
+  client:
+    image: pqc-forge-protocol-lab:0.10.0
+    profiles: [tools]
+    entrypoint: ["/opt/openssl/bin/openssl"]
+    command: ["version", "-a"]

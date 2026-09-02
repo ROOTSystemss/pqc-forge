@@ -1,0 +1,114 @@
+{
+  "schema": "pqc-forge.public-corpus/v1",
+  "description": "Twelve immutable public Nginx, HAProxy, and Apache configurations spanning legacy, modern-classical, insertion, and clean-control states.",
+  "cases": [
+    {
+      "id": "timcheadle-legacy",
+      "source": "https://gist.github.com/timcheadle/5578330a734534ce1815",
+      "revision": "b0ab832fd85f4ed2876eef9a8455f3abf00d4de1",
+      "url": "https://gist.githubusercontent.com/timcheadle/5578330a734534ce1815/raw/d481a2af0529bc1974bd01b2306999625f0b5d59/server.conf",
+      "filename": "server.conf",
+      "sha256": "sha256:4edc2cf096cc454e09e89110db19f167dcbd790111fe397db2715b4a687e26ab",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    },
+    {
+      "id": "nbeguier-modern-classical",
+      "source": "https://gist.github.com/nbeguier/4a11a38ea55f6ab5562a537d8584da41",
+      "revision": "fd3dba21b180fdce5eaae09cb5e6a819c3ba270e",
+      "url": "https://gist.githubusercontent.com/nbeguier/4a11a38ea55f6ab5562a537d8584da41/raw/40935f492ed867303c5fc9d42536f76411b7f788/nginx.conf",
+      "filename": "nginx.conf",
+      "sha256": "sha256:1e77ec141390c73f9d4f9167fe810dd19c3374818af61f8cb3a75fac83cc85fa",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    },
+    {
+      "id": "adamcrosby-classical-curve",
+      "source": "https://gist.github.com/adamcrosby/d18e40aa5c567dc0ca3e3bcfb791a323",
+      "revision": "7b5c5813ebfdbf2ff7ee3085c06af45e3a266c28",
+      "url": "https://gist.githubusercontent.com/adamcrosby/d18e40aa5c567dc0ca3e3bcfb791a323/raw/0acb390910df809e1752c5a4379dee01ff498ed2/nginx.conf",
+      "filename": "nginx.conf",
+      "sha256": "sha256:e64b1b42e7bbab837f461a359d1f2ef47efe49e4f373df445e02f3fd02ed2295",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    },
+    {
+      "id": "renomureza-legacy-default",
+      "source": "https://gist.github.com/renomureza/97da93192022fd0a962755e1f8206771",
+      "revision": "2fa7cc26742f36bb8eda50df77e00fd90c7927ed",
+      "url": "https://gist.githubusercontent.com/renomureza/97da93192022fd0a962755e1f8206771/raw/ada4d0aab95b81aa8eb0fcf2ca81827b94123cef/nginx.conf",
+      "filename": "nginx.conf",
+      "sha256": "sha256:bef0058f9fd0c37c2d5b6aa3392c0d0b479a831871f3ce841b511ffb86688d3c",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    },
+    {
+      "id": "h5bp-clean-control",
+      "source": "https://github.com/h5bp/server-configs-nginx",
+      "revision": "d2f2c3e2fac76f429adb738894499b8fb756d2f3",
+      "url": "https://raw.githubusercontent.com/h5bp/server-configs-nginx/d2f2c3e2fac76f429adb738894499b8fb756d2f3/nginx.conf",
+      "filename": "nginx.conf",
+      "sha256": "sha256:424b11e67f312aa549ebf82f7ce36f03aebde52adcbd73d01d6daa44e70dbd1a",
+      "expect": { "minFindings": 0, "minChanges": 0, "pack": false }
+    },
+    {
+      "id": "adobe-haproxy-insertion",
+      "source": "https://github.com/adobe/aem-dispatcher-docker/blob/main/haproxy/haproxy.cfg",
+      "revision": "d4d4f9f594871fc111948a0546945b0fb4e4fd4d",
+      "url": "https://raw.githubusercontent.com/adobe/aem-dispatcher-docker/d4d4f9f594871fc111948a0546945b0fb4e4fd4d/haproxy/haproxy.cfg",
+      "filename": "haproxy.cfg",
+      "sha256": "sha256:71ebf18c053010bf41bcfa5450a27c726d86f4ca47b5197e73a9deb8e0424f68",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    },
+    {
+      "id": "jbatesy-haproxy-explicit-curves",
+      "source": "https://gist.github.com/jbatesy/aaf96fa48e2ced42a0404b45526c9cf7",
+      "revision": "8d07d8e1a2c2b691d312a757c51ab6b609d3e857",
+      "url": "https://gist.githubusercontent.com/jbatesy/aaf96fa48e2ced42a0404b45526c9cf7/raw/6991b17ba632c0550a6c96bce4e1cff4d410f088/haproxy.cfg",
+      "filename": "haproxy.cfg",
+      "sha256": "sha256:5165569d67398d89009de015376da42dd95998e67b95070d132ec26e6e5e322b",
+      "expect": { "minFindings": 2, "minChanges": 2, "minResolved": 2, "pack": true }
+    },
+    {
+      "id": "haproxy-official-cleartext-control",
+      "source": "https://github.com/haproxy/haproxy/blob/master/examples/content-sw-sample.cfg",
+      "revision": "677457e88238203f81002e0f4d2ec7febd8185bf",
+      "url": "https://raw.githubusercontent.com/haproxy/haproxy/677457e88238203f81002e0f4d2ec7febd8185bf/examples/content-sw-sample.cfg",
+      "filename": "haproxy.cfg",
+      "sha256": "sha256:39459b24387ab5b865890fa74ea02b8ae5b1df28f65765c9ee01d565fb4755ae",
+      "expect": { "minFindings": 0, "minChanges": 0, "pack": false }
+    },
+    {
+      "id": "mrlesmithjr-haproxy-control",
+      "source": "https://gist.github.com/mrlesmithjr/c3b1308b0bf1aff10ab4717772c7bbc1",
+      "revision": "103f8ceb65b9d4b995f72efa0e96915c37d335f6",
+      "url": "https://gist.githubusercontent.com/mrlesmithjr/c3b1308b0bf1aff10ab4717772c7bbc1/raw/e8e788d1d62feef5befd8ea0dc658c6189f89910/haproxy.cfg",
+      "filename": "haproxy.cfg",
+      "sha256": "sha256:af40f67b89c341763a91683fcb117aeb43fa2d25010cf0557ac1c310775ddf13",
+      "expect": { "minFindings": 0, "minChanges": 0, "pack": false }
+    },
+    {
+      "id": "apache-official-ssl-template",
+      "source": "https://github.com/apache/httpd/blob/trunk/docs/conf/extra/httpd-ssl.conf.in",
+      "revision": "6a7cfcbf52d1d07226cfa9e37282edc927d8bc6a",
+      "url": "https://raw.githubusercontent.com/apache/httpd/6a7cfcbf52d1d07226cfa9e37282edc927d8bc6a/docs/conf/extra/httpd-ssl.conf.in",
+      "filename": "httpd-ssl.conf",
+      "sha256": "sha256:21630151c379086d1011a8865db2eac982c425aa37ccbbeb9444d4147cc3c4db",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    },
+    {
+      "id": "namnamir-apache-classical-curves",
+      "source": "https://gist.github.com/namnamir/c4285615d69b68279551874fcd38e688",
+      "revision": "f3b1cf6bca27c6297afd95df334745774ed2c380",
+      "url": "https://gist.githubusercontent.com/namnamir/c4285615d69b68279551874fcd38e688/raw/f168ce7a8ef59c0524849fbf8d35ffdbd29dea67/ssl.conf",
+      "filename": "ssl.conf",
+      "sha256": "sha256:b6af85804e3e6d847ee6397dab1386f528c1ef15104ca8aefe18a5788c20ca04",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    },
+    {
+      "id": "growtopiajaw-apache-classical-curves",
+      "source": "https://gist.github.com/growtopiajaw/c76e57530eeb349a993b31046fe4f822",
+      "revision": "3e2447fd5c5560fb034a3891dc631122f7902b6e",
+      "url": "https://gist.githubusercontent.com/growtopiajaw/c76e57530eeb349a993b31046fe4f822/raw/6c001c03db497d16581cdc46f2c781b0f8b2655a/bitnami.conf",
+      "filename": "bitnami.conf",
+      "sha256": "sha256:4ec40aa875296ca74204e1052a1d268e992c384559f2cb2144f7ead3ba4ca091",
+      "expect": { "minFindings": 1, "minChanges": 1, "minResolved": 1, "pack": true }
+    }
+  ]
+}

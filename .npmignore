@@ -1,0 +1,12 @@
+.npm-cache/
+demo-output/
+protocol-output/
+demo-pr-pack*/
+test/
+*.pqc-forge.bak
+*.log
+scripts/diagnose-protocol-services-windows.ps1
+.local/
+release-output/
+dist/
+validation-output/

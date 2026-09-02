@@ -1,0 +1,1390 @@
+{
+  "schema": "pqc-forge.breaklab-receipt/v1",
+  "generatedAt": "2026-08-28T02:11:35.105Z",
+  "engine": {
+    "name": "PQC Forge BreakLab",
+    "version": "0.2.0"
+  },
+  "scenarioDigest": "sha256:399820887e4a737be05085207ca0ff9a420f246645d454b883373a66cdb81f26",
+  "run": {
+    "schema": "pqc-forge.breaklab-run/v1",
+    "scenario": "hybrid-tls-migration-demo",
+    "scenarioSchema": "pqc-forge.breaklab-scenario/v1",
+    "seed": 42,
+    "evaluationBudgetPerStrategy": 30,
+    "totalStates": 72,
+    "winner": "pairwise",
+    "strategies": [
+      {
+        "strategy": "random",
+        "terminology": "classical search",
+        "evaluations": 30,
+        "stateCoverage": 0.4167,
+        "failingConfigurations": 28,
+        "uniqueFailureModes": [
+          "AUTH_SIGNATURE_UNSUPPORTED",
+          "CLASSICAL_AUTHENTICATION",
+          "CLASSICAL_DOWNGRADE",
+          "FRAGMENT_LIMIT_EXCEEDED",
+          "HANDSHAKE_NO_COMMON_GROUP",
+          "LATENCY_BUDGET_EXCEEDED"
+        ],
+        "maxSeverity": 100,
+        "bestFailure": {
+          "candidate": {
+            "client": "legacy-classical",
+            "server": "classical-first",
+            "certificate": "ml-dsa-65",
+            "network": "constrained-edge",
+            "allowClassicalFallback": false
+          },
+          "negotiatedGroup": null,
+          "signatureAlgorithm": "ML-DSA-65",
+          "handshakeBytes": 4029,
+          "fragments": 5,
+          "latencyMs": 132.8,
+          "findings": [
+            {
+              "code": "HANDSHAKE_NO_COMMON_GROUP",
+              "severity": 100,
+              "message": "Client and server have no permitted key-exchange group in common."
+            },
+            {
+              "code": "AUTH_SIGNATURE_UNSUPPORTED",
+              "severity": 98,
+              "message": "Client does not support ML-DSA-65."
+            },
+            {
+              "code": "FRAGMENT_LIMIT_EXCEEDED",
+              "severity": 85,
+              "message": "4029 handshake bytes require 5 fragments; limit is 4."
+            },
+            {
+              "code": "LATENCY_BUDGET_EXCEEDED",
+              "severity": 65,
+              "message": "132.8ms exceeds the 110ms budget."
+            }
+          ],
+          "severity": 100,
+          "score": 348
+        },
+        "bestFailuresByMode": {
+          "HANDSHAKE_NO_COMMON_GROUP": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "CLASSICAL_AUTHENTICATION": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "rsa-pss",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "RSA-PSS",
+            "handshakeBytes": 1232,
+            "fragments": 2,
+            "latencyMs": 94.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "CLASSICAL_AUTHENTICATION",
+                "severity": 90,
+                "message": "Authentication remains classical with RSA-PSS."
+              }
+            ],
+            "severity": 100,
+            "score": 190
+          },
+          "LATENCY_BUDGET_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "FRAGMENT_LIMIT_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "CLASSICAL_DOWNGRADE": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": true
+            },
+            "negotiatedGroup": "X25519",
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4093,
+            "fragments": 5,
+            "latencyMs": 133.2,
+            "findings": [
+              {
+                "code": "CLASSICAL_DOWNGRADE",
+                "severity": 95,
+                "message": "Negotiation silently fell back to X25519."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4093 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "133.2ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 98,
+            "score": 343
+          },
+          "AUTH_SIGNATURE_UNSUPPORTED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          }
+        },
+        "runtimeMs": 4.922,
+        "seed": 42
+      },
+      {
+        "strategy": "pairwise",
+        "terminology": "classical search",
+        "evaluations": 30,
+        "stateCoverage": 0.4167,
+        "failingConfigurations": 30,
+        "uniqueFailureModes": [
+          "AUTH_SIGNATURE_UNSUPPORTED",
+          "CLASSICAL_AUTHENTICATION",
+          "CLASSICAL_DOWNGRADE",
+          "FRAGMENT_LIMIT_EXCEEDED",
+          "HANDSHAKE_NO_COMMON_GROUP",
+          "LATENCY_BUDGET_EXCEEDED"
+        ],
+        "maxSeverity": 100,
+        "bestFailure": {
+          "candidate": {
+            "client": "legacy-classical",
+            "server": "pq-preferred",
+            "certificate": "ml-dsa-65",
+            "network": "constrained-edge",
+            "allowClassicalFallback": false
+          },
+          "negotiatedGroup": null,
+          "signatureAlgorithm": "ML-DSA-65",
+          "handshakeBytes": 4029,
+          "fragments": 5,
+          "latencyMs": 132.8,
+          "findings": [
+            {
+              "code": "HANDSHAKE_NO_COMMON_GROUP",
+              "severity": 100,
+              "message": "Client and server have no permitted key-exchange group in common."
+            },
+            {
+              "code": "AUTH_SIGNATURE_UNSUPPORTED",
+              "severity": 98,
+              "message": "Client does not support ML-DSA-65."
+            },
+            {
+              "code": "FRAGMENT_LIMIT_EXCEEDED",
+              "severity": 85,
+              "message": "4029 handshake bytes require 5 fragments; limit is 4."
+            },
+            {
+              "code": "LATENCY_BUDGET_EXCEEDED",
+              "severity": 65,
+              "message": "132.8ms exceeds the 110ms budget."
+            }
+          ],
+          "severity": 100,
+          "score": 348
+        },
+        "bestFailuresByMode": {
+          "FRAGMENT_LIMIT_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "LATENCY_BUDGET_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "CLASSICAL_DOWNGRADE": {
+            "candidate": {
+              "client": "pq-kex-classical-auth",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": true
+            },
+            "negotiatedGroup": "X25519",
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4093,
+            "fragments": 5,
+            "latencyMs": 133.2,
+            "findings": [
+              {
+                "code": "CLASSICAL_DOWNGRADE",
+                "severity": 95,
+                "message": "Negotiation silently fell back to X25519."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4093 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "133.2ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 98,
+            "score": 343
+          },
+          "CLASSICAL_AUTHENTICATION": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "rsa-pss",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "RSA-PSS",
+            "handshakeBytes": 1232,
+            "fragments": 2,
+            "latencyMs": 94.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "CLASSICAL_AUTHENTICATION",
+                "severity": 90,
+                "message": "Authentication remains classical with RSA-PSS."
+              }
+            ],
+            "severity": 100,
+            "score": 190
+          },
+          "AUTH_SIGNATURE_UNSUPPORTED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "HANDSHAKE_NO_COMMON_GROUP": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          }
+        },
+        "runtimeMs": 39.122,
+        "seed": 42,
+        "pairsCovered": 57
+      },
+      {
+        "strategy": "simulated_annealing",
+        "terminology": "classical search",
+        "evaluations": 17,
+        "stateCoverage": 0.2361,
+        "failingConfigurations": 17,
+        "uniqueFailureModes": [
+          "AUTH_SIGNATURE_UNSUPPORTED",
+          "CLASSICAL_AUTHENTICATION",
+          "CLASSICAL_DOWNGRADE",
+          "FRAGMENT_LIMIT_EXCEEDED",
+          "HANDSHAKE_NO_COMMON_GROUP",
+          "LATENCY_BUDGET_EXCEEDED"
+        ],
+        "maxSeverity": 100,
+        "bestFailure": {
+          "candidate": {
+            "client": "legacy-classical",
+            "server": "classical-first",
+            "certificate": "ml-dsa-65",
+            "network": "constrained-edge",
+            "allowClassicalFallback": false
+          },
+          "negotiatedGroup": null,
+          "signatureAlgorithm": "ML-DSA-65",
+          "handshakeBytes": 4029,
+          "fragments": 5,
+          "latencyMs": 132.8,
+          "findings": [
+            {
+              "code": "HANDSHAKE_NO_COMMON_GROUP",
+              "severity": 100,
+              "message": "Client and server have no permitted key-exchange group in common."
+            },
+            {
+              "code": "AUTH_SIGNATURE_UNSUPPORTED",
+              "severity": 98,
+              "message": "Client does not support ML-DSA-65."
+            },
+            {
+              "code": "FRAGMENT_LIMIT_EXCEEDED",
+              "severity": 85,
+              "message": "4029 handshake bytes require 5 fragments; limit is 4."
+            },
+            {
+              "code": "LATENCY_BUDGET_EXCEEDED",
+              "severity": 65,
+              "message": "132.8ms exceeds the 110ms budget."
+            }
+          ],
+          "severity": 100,
+          "score": 348
+        },
+        "bestFailuresByMode": {
+          "HANDSHAKE_NO_COMMON_GROUP": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "CLASSICAL_AUTHENTICATION": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "rsa-pss",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "RSA-PSS",
+            "handshakeBytes": 1232,
+            "fragments": 2,
+            "latencyMs": 94.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "CLASSICAL_AUTHENTICATION",
+                "severity": 90,
+                "message": "Authentication remains classical with RSA-PSS."
+              }
+            ],
+            "severity": 100,
+            "score": 190
+          },
+          "AUTH_SIGNATURE_UNSUPPORTED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "FRAGMENT_LIMIT_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "LATENCY_BUDGET_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "CLASSICAL_DOWNGRADE": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": true
+            },
+            "negotiatedGroup": "X25519",
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4093,
+            "fragments": 5,
+            "latencyMs": 133.2,
+            "findings": [
+              {
+                "code": "CLASSICAL_DOWNGRADE",
+                "severity": 95,
+                "message": "Negotiation silently fell back to X25519."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4093 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "133.2ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 98,
+            "score": 343
+          }
+        },
+        "runtimeMs": 0.454,
+        "seed": 42
+      },
+      {
+        "strategy": "adaptive_distribution",
+        "terminology": "classical quantum-inspired probability-distribution search",
+        "evaluations": 30,
+        "stateCoverage": 0.4167,
+        "failingConfigurations": 28,
+        "uniqueFailureModes": [
+          "AUTH_SIGNATURE_UNSUPPORTED",
+          "CLASSICAL_AUTHENTICATION",
+          "CLASSICAL_DOWNGRADE",
+          "FRAGMENT_LIMIT_EXCEEDED",
+          "HANDSHAKE_NO_COMMON_GROUP",
+          "LATENCY_BUDGET_EXCEEDED"
+        ],
+        "maxSeverity": 100,
+        "bestFailure": {
+          "candidate": {
+            "client": "legacy-classical",
+            "server": "classical-first",
+            "certificate": "ml-dsa-65",
+            "network": "constrained-edge",
+            "allowClassicalFallback": false
+          },
+          "negotiatedGroup": null,
+          "signatureAlgorithm": "ML-DSA-65",
+          "handshakeBytes": 4029,
+          "fragments": 5,
+          "latencyMs": 132.8,
+          "findings": [
+            {
+              "code": "HANDSHAKE_NO_COMMON_GROUP",
+              "severity": 100,
+              "message": "Client and server have no permitted key-exchange group in common."
+            },
+            {
+              "code": "AUTH_SIGNATURE_UNSUPPORTED",
+              "severity": 98,
+              "message": "Client does not support ML-DSA-65."
+            },
+            {
+              "code": "FRAGMENT_LIMIT_EXCEEDED",
+              "severity": 85,
+              "message": "4029 handshake bytes require 5 fragments; limit is 4."
+            },
+            {
+              "code": "LATENCY_BUDGET_EXCEEDED",
+              "severity": 65,
+              "message": "132.8ms exceeds the 110ms budget."
+            }
+          ],
+          "severity": 100,
+          "score": 348
+        },
+        "bestFailuresByMode": {
+          "HANDSHAKE_NO_COMMON_GROUP": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "CLASSICAL_AUTHENTICATION": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "rsa-pss",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "RSA-PSS",
+            "handshakeBytes": 1232,
+            "fragments": 2,
+            "latencyMs": 94.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "CLASSICAL_AUTHENTICATION",
+                "severity": 90,
+                "message": "Authentication remains classical with RSA-PSS."
+              }
+            ],
+            "severity": 100,
+            "score": 190
+          },
+          "LATENCY_BUDGET_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "FRAGMENT_LIMIT_EXCEEDED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          },
+          "CLASSICAL_DOWNGRADE": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "pq-preferred",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": true
+            },
+            "negotiatedGroup": "X25519",
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4093,
+            "fragments": 5,
+            "latencyMs": 133.2,
+            "findings": [
+              {
+                "code": "CLASSICAL_DOWNGRADE",
+                "severity": 95,
+                "message": "Negotiation silently fell back to X25519."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4093 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "133.2ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 98,
+            "score": 343
+          },
+          "AUTH_SIGNATURE_UNSUPPORTED": {
+            "candidate": {
+              "client": "legacy-classical",
+              "server": "classical-first",
+              "certificate": "ml-dsa-65",
+              "network": "constrained-edge",
+              "allowClassicalFallback": false
+            },
+            "negotiatedGroup": null,
+            "signatureAlgorithm": "ML-DSA-65",
+            "handshakeBytes": 4029,
+            "fragments": 5,
+            "latencyMs": 132.8,
+            "findings": [
+              {
+                "code": "HANDSHAKE_NO_COMMON_GROUP",
+                "severity": 100,
+                "message": "Client and server have no permitted key-exchange group in common."
+              },
+              {
+                "code": "AUTH_SIGNATURE_UNSUPPORTED",
+                "severity": 98,
+                "message": "Client does not support ML-DSA-65."
+              },
+              {
+                "code": "FRAGMENT_LIMIT_EXCEEDED",
+                "severity": 85,
+                "message": "4029 handshake bytes require 5 fragments; limit is 4."
+              },
+              {
+                "code": "LATENCY_BUDGET_EXCEEDED",
+                "severity": 65,
+                "message": "132.8ms exceeds the 110ms budget."
+              }
+            ],
+            "severity": 100,
+            "score": 348
+          }
+        },
+        "runtimeMs": 1.01,
+        "seed": 42,
+        "batches": 3
+      }
+    ],
+    "counterexamples": [
+      {
+        "failureCode": "HANDSHAKE_NO_COMMON_GROUP",
+        "candidate": {
+          "client": "legacy-classical",
+          "server": "pq-preferred",
+          "certificate": "ml-dsa-65",
+          "network": "constrained-edge",
+          "allowClassicalFallback": false
+        },
+        "negotiatedGroup": null,
+        "signatureAlgorithm": "ML-DSA-65",
+        "handshakeBytes": 4029,
+        "fragments": 5,
+        "latencyMs": 132.8,
+        "findings": [
+          {
+            "code": "HANDSHAKE_NO_COMMON_GROUP",
+            "severity": 100,
+            "message": "Client and server have no permitted key-exchange group in common."
+          },
+          {
+            "code": "AUTH_SIGNATURE_UNSUPPORTED",
+            "severity": 98,
+            "message": "Client does not support ML-DSA-65."
+          },
+          {
+            "code": "FRAGMENT_LIMIT_EXCEEDED",
+            "severity": 85,
+            "message": "4029 handshake bytes require 5 fragments; limit is 4."
+          },
+          {
+            "code": "LATENCY_BUDGET_EXCEEDED",
+            "severity": 65,
+            "message": "132.8ms exceeds the 110ms budget."
+          }
+        ],
+        "severity": 100,
+        "score": 348,
+        "changedDimensions": [
+          "client",
+          "network"
+        ]
+      },
+      {
+        "failureCode": "CLASSICAL_AUTHENTICATION",
+        "candidate": {
+          "client": "legacy-classical",
+          "server": "pq-preferred",
+          "certificate": "rsa-pss",
+          "network": "datacenter",
+          "allowClassicalFallback": false
+        },
+        "negotiatedGroup": null,
+        "signatureAlgorithm": "RSA-PSS",
+        "handshakeBytes": 1232,
+        "fragments": 1,
+        "latencyMs": 10,
+        "findings": [
+          {
+            "code": "HANDSHAKE_NO_COMMON_GROUP",
+            "severity": 100,
+            "message": "Client and server have no permitted key-exchange group in common."
+          },
+          {
+            "code": "CLASSICAL_AUTHENTICATION",
+            "severity": 90,
+            "message": "Authentication remains classical with RSA-PSS."
+          }
+        ],
+        "severity": 100,
+        "score": 190,
+        "changedDimensions": [
+          "client",
+          "certificate"
+        ]
+      },
+      {
+        "failureCode": "LATENCY_BUDGET_EXCEEDED",
+        "candidate": {
+          "client": "legacy-classical",
+          "server": "pq-preferred",
+          "certificate": "ml-dsa-65",
+          "network": "constrained-edge",
+          "allowClassicalFallback": false
+        },
+        "negotiatedGroup": null,
+        "signatureAlgorithm": "ML-DSA-65",
+        "handshakeBytes": 4029,
+        "fragments": 5,
+        "latencyMs": 132.8,
+        "findings": [
+          {
+            "code": "HANDSHAKE_NO_COMMON_GROUP",
+            "severity": 100,
+            "message": "Client and server have no permitted key-exchange group in common."
+          },
+          {
+            "code": "AUTH_SIGNATURE_UNSUPPORTED",
+            "severity": 98,
+            "message": "Client does not support ML-DSA-65."
+          },
+          {
+            "code": "FRAGMENT_LIMIT_EXCEEDED",
+            "severity": 85,
+            "message": "4029 handshake bytes require 5 fragments; limit is 4."
+          },
+          {
+            "code": "LATENCY_BUDGET_EXCEEDED",
+            "severity": 65,
+            "message": "132.8ms exceeds the 110ms budget."
+          }
+        ],
+        "severity": 100,
+        "score": 348,
+        "changedDimensions": [
+          "client",
+          "network"
+        ]
+      },
+      {
+        "failureCode": "FRAGMENT_LIMIT_EXCEEDED",
+        "candidate": {
+          "client": "legacy-classical",
+          "server": "pq-preferred",
+          "certificate": "ml-dsa-65",
+          "network": "constrained-edge",
+          "allowClassicalFallback": false
+        },
+        "negotiatedGroup": null,
+        "signatureAlgorithm": "ML-DSA-65",
+        "handshakeBytes": 4029,
+        "fragments": 5,
+        "latencyMs": 132.8,
+        "findings": [
+          {
+            "code": "HANDSHAKE_NO_COMMON_GROUP",
+            "severity": 100,
+            "message": "Client and server have no permitted key-exchange group in common."
+          },
+          {
+            "code": "AUTH_SIGNATURE_UNSUPPORTED",
+            "severity": 98,
+            "message": "Client does not support ML-DSA-65."
+          },
+          {
+            "code": "FRAGMENT_LIMIT_EXCEEDED",
+            "severity": 85,
+            "message": "4029 handshake bytes require 5 fragments; limit is 4."
+          },
+          {
+            "code": "LATENCY_BUDGET_EXCEEDED",
+            "severity": 65,
+            "message": "132.8ms exceeds the 110ms budget."
+          }
+        ],
+        "severity": 100,
+        "score": 348,
+        "changedDimensions": [
+          "client",
+          "network"
+        ]
+      },
+      {
+        "failureCode": "CLASSICAL_DOWNGRADE",
+        "candidate": {
+          "client": "legacy-classical",
+          "server": "pq-preferred",
+          "certificate": "ml-dsa-65",
+          "network": "constrained-edge",
+          "allowClassicalFallback": true
+        },
+        "negotiatedGroup": "X25519",
+        "signatureAlgorithm": "ML-DSA-65",
+        "handshakeBytes": 4093,
+        "fragments": 5,
+        "latencyMs": 133.2,
+        "findings": [
+          {
+            "code": "CLASSICAL_DOWNGRADE",
+            "severity": 95,
+            "message": "Negotiation silently fell back to X25519."
+          },
+          {
+            "code": "AUTH_SIGNATURE_UNSUPPORTED",
+            "severity": 98,
+            "message": "Client does not support ML-DSA-65."
+          },
+          {
+            "code": "FRAGMENT_LIMIT_EXCEEDED",
+            "severity": 85,
+            "message": "4093 handshake bytes require 5 fragments; limit is 4."
+          },
+          {
+            "code": "LATENCY_BUDGET_EXCEEDED",
+            "severity": 65,
+            "message": "133.2ms exceeds the 110ms budget."
+          }
+        ],
+        "severity": 98,
+        "score": 343,
+        "changedDimensions": [
+          "client",
+          "network",
+          "allowClassicalFallback"
+        ]
+      },
+      {
+        "failureCode": "AUTH_SIGNATURE_UNSUPPORTED",
+        "candidate": {
+          "client": "legacy-classical",
+          "server": "pq-preferred",
+          "certificate": "ml-dsa-65",
+          "network": "constrained-edge",
+          "allowClassicalFallback": false
+        },
+        "negotiatedGroup": null,
+        "signatureAlgorithm": "ML-DSA-65",
+        "handshakeBytes": 4029,
+        "fragments": 5,
+        "latencyMs": 132.8,
+        "findings": [
+          {
+            "code": "HANDSHAKE_NO_COMMON_GROUP",
+            "severity": 100,
+            "message": "Client and server have no permitted key-exchange group in common."
+          },
+          {
+            "code": "AUTH_SIGNATURE_UNSUPPORTED",
+            "severity": 98,
+            "message": "Client does not support ML-DSA-65."
+          },
+          {
+            "code": "FRAGMENT_LIMIT_EXCEEDED",
+            "severity": 85,
+            "message": "4029 handshake bytes require 5 fragments; limit is 4."
+          },
+          {
+            "code": "LATENCY_BUDGET_EXCEEDED",
+            "severity": 65,
+            "message": "132.8ms exceeds the 110ms budget."
+          }
+        ],
+        "severity": 100,
+        "score": 348,
+        "changedDimensions": [
+          "client",
+          "network"
+        ]
+      }
+    ],
+    "verdict": {
+      "highestSeverity": 100,
+      "failureModes": [
+        "AUTH_SIGNATURE_UNSUPPORTED",
+        "CLASSICAL_AUTHENTICATION",
+        "CLASSICAL_DOWNGRADE",
+        "FRAGMENT_LIMIT_EXCEEDED",
+        "HANDSHAKE_NO_COMMON_GROUP",
+        "LATENCY_BUDGET_EXCEEDED"
+      ],
+      "pass": false
+    }
+  },
+  "receiptDigest": "sha256:45dd3905ad5eb08f737ffd3a911f18abdf17cdd555cb2d5f66e775a9c9338089"
+}

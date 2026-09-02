@@ -1,0 +1,22 @@
+name: Real PQC protocol lab
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "lab/**"
+      - "src/protocol-lab/**"
+      - "test/protocol-lab.test.js"
+      - ".github/workflows/real-pqc-lab.yml"
+
+jobs:
+  protocol-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: node ./bin/pqc-forge.js protocol-lab --out ./protocol-output
