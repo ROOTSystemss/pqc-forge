@@ -1,0 +1,21 @@
+Copyright (c) 2026 RootSystems. All rights reserved.
+
+This software and associated documentation files (the "Software") are
+proprietary and confidential. No license, express or implied, is granted
+to any person to use, copy, modify, merge, publish, distribute, sublicense,
+or sell copies of the Software without prior written permission from the
+copyright holder.
+
+This is a placeholder "all rights reserved" notice, not a final licensing
+decision. Before public launch, choose deliberately between:
+
+  - Proprietary/closed source (matches the current paid-tier plan in
+    SELL.md: Community/Pro/Team/Self-hosted).
+  - Open-core: an OSI license (e.g. Apache-2.0 or MIT) for the scanning/
+    migration CLI, with hosted evidence, the GitHub App, and multi-repo
+    fleet features kept proprietary. This is the common path for
+    developer-security tools competing for adoption (Snyk, Trivy,
+    Semgrep all shipped open-core).
+
+Update this file and the `license` field in package.json once that
+decision is made.

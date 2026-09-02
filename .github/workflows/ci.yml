@@ -11,9 +11,11 @@ permissions:
 jobs:
   test-and-package:
     strategy:
+      fail-fast: false
       matrix:
         node: [20, 22]
-    runs-on: ubuntu-latest
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -21,5 +23,5 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm run release:check -- --skip-public --out release-output/ci-node-${{ matrix.node }}
+      - run: npm run release:check -- --skip-public --out release-output/ci-${{ matrix.os }}-node-${{ matrix.node }}
 
