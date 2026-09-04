@@ -1,0 +1,32 @@
+{
+  "name": "pqc-forge",
+  "version": "0.1.0",
+  "description": "Post-quantum (ML-DSA) signing CLI and library",
+  "type": "module",
+  "bin": {
+    "pqc-forge": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.5.0",
+    "@noble/post-quantum": "^0.2.1",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}
