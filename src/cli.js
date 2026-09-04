@@ -25,7 +25,7 @@ Usage:
   pqc-forge migrate <path> [--write --accept-runtime-requirement] [--out directory] [--signing-key file] [--json]
   pqc-forge rollback <migration-receipt.json> [--write] [--json]
   pqc-forge pr-pack <repository> --out directory [--protocol-receipt file] [--runtime-receipt file] [--signing-key file] [--json]
-  pqc-forge runtime-probe <nginx|haproxy|apache> --config file --out directory [--openssl executable] [--server-executable executable] [--container name --container-config path] [--docker executable] [--target name] [--signing-key file] [--json]
+  pqc-forge runtime-probe <nginx|haproxy|apache|envoy> --config file --out directory [--openssl executable] [--server-executable executable] [--container name --container-config path] [--docker executable] [--target name] [--signing-key file] [--json]
   pqc-forge staging-gate <manifest.json> --out directory [--signing-key file] [--json]
   pqc-forge validate-corpus <manifest.json> --out directory [--signing-key file] [--json]
   pqc-forge verify <host[:port]> [--insecure] [--out directory] [--signing-key file] [--json]

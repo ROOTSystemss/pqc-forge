@@ -39,8 +39,18 @@ export const PROTOCOL_CASES = [
   { name: 'legacy-client-fallback', target: 'hybrid-rsa:443', groups: 'X25519', requirePqKeyExchange: true, requirePqAuthentication: false, expectedFindings: ['CLASSICAL_DOWNGRADE'] },
   { name: 'legacy-client-to-pq-only-server', target: 'pqonly-rsa:443', groups: 'X25519', requirePqKeyExchange: true, requirePqAuthentication: false, expectedFindings: ['HANDSHAKE_FAILED'] },
   { name: 'hybrid-client-to-classical-server', target: 'classical-rsa:443', groups: 'X25519MLKEM768:X25519', requirePqKeyExchange: true, requirePqAuthentication: false, expectedFindings: ['CLASSICAL_DOWNGRADE'] },
-  { name: 'full-pq-client-and-server', target: 'hybrid-mldsa:443', groups: 'X25519MLKEM768:X25519', requirePqKeyExchange: true, requirePqAuthentication: true, expectedFindings: [] }
+  { name: 'full-pq-client-and-server', target: 'hybrid-mldsa:443', groups: 'X25519MLKEM768:X25519', requirePqKeyExchange: true, requirePqAuthentication: true, expectedFindings: [] },
+  // Same four negotiation scenarios as the nginx/OpenSSL cases above,
+  // against the official Envoy image instead — proves the hybrid group
+  // actually negotiates through Envoy's statically linked BoringSSL, not
+  // just through the OpenSSL/nginx build this project compiles itself.
+  { name: 'envoy-hybrid-client-to-hybrid-server', target: 'envoy-hybrid:443', groups: 'X25519MLKEM768:X25519', requirePqKeyExchange: true, requirePqAuthentication: false, expectedFindings: [] },
+  { name: 'envoy-legacy-client-fallback', target: 'envoy-hybrid:443', groups: 'X25519', requirePqKeyExchange: true, requirePqAuthentication: false, expectedFindings: ['CLASSICAL_DOWNGRADE'] },
+  { name: 'envoy-legacy-client-to-pq-only-server', target: 'envoy-pqonly:443', groups: 'X25519', requirePqKeyExchange: true, requirePqAuthentication: false, expectedFindings: ['HANDSHAKE_FAILED'] },
+  { name: 'envoy-hybrid-client-to-classical-server', target: 'envoy-classical:443', groups: 'X25519MLKEM768:X25519', requirePqKeyExchange: true, requirePqAuthentication: false, expectedFindings: ['CLASSICAL_DOWNGRADE'] }
 ];
+
+const ENVOY_IMAGE_DIGEST = 'sha256:3a76238cdf52c7a3e33951f44c02d694108e6481feffe6663bf9319f55ec1394'; // envoyproxy/envoy v1.36.10 (BoringSSL), resolved 2026-09-03
 
 function execute(file, args, { cwd = projectRoot, timeoutMs = 180000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -108,13 +118,17 @@ export async function runDockerProtocolLab() {
   const docker = status.command;
   const build = await execute(docker, composeArgs('build'), { timeoutMs: 900000 });
   if (build.code !== 0) throw new Error(`Protocol lab image build failed: ${(build.stderr || build.stdout).slice(-4000)}`);
-  const started = await execute(docker, composeArgs('up', '-d', 'classical-rsa', 'hybrid-rsa', 'pqonly-rsa', 'hybrid-mldsa'), { timeoutMs: 120000 });
+  const certInit = await execute(docker, composeArgs('run', '--rm', 'envoy-cert-init'), { timeoutMs: 60000 });
+  if (certInit.code !== 0) throw new Error(`Envoy cert generation failed: ${(certInit.stderr || certInit.stdout).slice(-4000)}`);
+  const started = await execute(docker, composeArgs('up', '-d',
+    'classical-rsa', 'hybrid-rsa', 'pqonly-rsa', 'hybrid-mldsa',
+    'envoy-hybrid', 'envoy-pqonly', 'envoy-classical'), { timeoutMs: 120000 });
   const results = [];
   let serviceState = null;
   let serviceLogs = null;
   try {
     if (started.code !== 0) throw new Error(`Protocol lab services failed to start: ${(started.stderr || started.stdout).slice(-4000)}`);
-    const requiredServices = ['classical-rsa', 'hybrid-rsa', 'pqonly-rsa', 'hybrid-mldsa'];
+    const requiredServices = ['classical-rsa', 'hybrid-rsa', 'pqonly-rsa', 'hybrid-mldsa', 'envoy-hybrid', 'envoy-pqonly', 'envoy-classical'];
     let runningServices = [];
     for (let attempt = 1; attempt <= 10; attempt += 1) {
       const running = await execute(docker, composeArgs('ps', '--status', 'running', '--services'), { timeoutMs: 30000 });
@@ -139,7 +153,7 @@ export async function runDockerProtocolLab() {
   const unexpectedHighestSeverity = Math.max(0, ...results.flatMap((result) => result.findings.filter((finding) => result.unexpectedFindings.includes(finding.code)).map((finding) => finding.severity)));
   return {
     schema: 'pqc-forge.protocol-lab-run/v1', generatedAt: new Date().toISOString(),
-    components: { openssl: '3.5.8', nginx: '1.30.4' },
+    components: { openssl: '3.5.8', nginx: '1.30.4', envoy: '1.36.10', envoyImageDigest: ENVOY_IMAGE_DIGEST },
     services: { state: serviceState, logs: serviceLogs }, cases: results,
     verdict: {
       pass: results.every((result) => result.expectationMet), highestSeverity, unexpectedHighestSeverity,

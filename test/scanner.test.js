@@ -60,6 +60,53 @@ test('scanner identifies Apache classical and missing group policies per TLS vir
   assert.equal(migrated.findings.some((finding) => finding.id.startsWith('QF-APACHE-')), false);
 });
 
+test('scanner identifies Envoy classical curves, missing group policy, and legacy TLS minimum per TLS context', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-envoy-scan-'));
+  const config = path.join(root, 'envoy.yaml');
+  await fs.writeFile(config, [
+    'static_resources:',
+    '  listeners:',
+    '  - filter_chains:',
+    '    - transport_socket:',
+    '        typed_config:',
+    '          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext',
+    '          common_tls_context:',
+    '            tls_params:',
+    '              tls_minimum_protocol_version: TLSv1_1',
+    '              ecdh_curves:',
+    '              - X25519',
+    '              - P-256',
+    '  clusters:',
+    '  - transport_socket:',
+    '      typed_config:',
+    '        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext',
+    '        common_tls_context: {}',
+    ''
+  ].join('\n'));
+  const vulnerable = await scanRepository(root);
+  assert.equal(vulnerable.findings.some((finding) => finding.id === 'QF-ENVOY-CLASSICAL-GROUPS'), true);
+  assert.equal(vulnerable.findings.some((finding) => finding.id === 'QF-ENVOY-LEGACY-TLS'), true);
+  assert.equal(vulnerable.findings.some((finding) => finding.id === 'QF-ENVOY-MISSING-GROUP-POLICY'), true);
+
+  await fs.writeFile(config, [
+    'static_resources:',
+    '  listeners:',
+    '  - filter_chains:',
+    '    - transport_socket:',
+    '        typed_config:',
+    '          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext',
+    '          common_tls_context:',
+    '            tls_params:',
+    '              tls_minimum_protocol_version: TLSv1_2',
+    '              ecdh_curves:',
+    '              - X25519MLKEM768',
+    '              - X25519',
+    ''
+  ].join('\n'));
+  const migrated = await scanRepository(root);
+  assert.equal(migrated.findings.some((finding) => finding.id.startsWith('QF-ENVOY-')), false);
+});
+
 test('scanner exports valid SARIF with stable fingerprints', async () => {
   const report = await scanRepository(fixture);
   const sarif = scanToSarif(report);

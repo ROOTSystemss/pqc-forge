@@ -37,8 +37,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /opt/openssl /opt/openssl
 COPY --from=build /opt/nginx /opt/nginx
 COPY entrypoint.sh /usr/local/bin/pqc-lab-entrypoint
+COPY gen-certs.sh /usr/local/bin/pqc-lab-gen-certs
 COPY nginx.template.conf /opt/nginx/conf/nginx.template.conf
-RUN chmod 0755 /usr/local/bin/pqc-lab-entrypoint
+RUN chmod 0755 /usr/local/bin/pqc-lab-entrypoint /usr/local/bin/pqc-lab-gen-certs
 ENV PATH="/opt/openssl/bin:/opt/nginx/sbin:${PATH}" \
     LD_LIBRARY_PATH="/opt/openssl/lib64:/opt/openssl/lib" \
     OPENSSL_CONF="/opt/openssl/openssl.cnf"

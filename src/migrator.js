@@ -5,6 +5,7 @@ import path from 'node:path';
 const digest = (content) => `sha256:${createHash('sha256').update(content).digest('hex')}`;
 const HAPROXY_GROUPS = 'X25519MLKEM768:SecP256r1MLKEM768:X25519:P-384:P-256';
 const APACHE_GROUPS = 'X25519MLKEM768:X25519:prime256v1:secp384r1';
+const ENVOY_GROUPS = ['X25519MLKEM768', 'X25519', 'P-256'];
 
 function editableLines(content) {
   return { lines: content.split(/\r?\n/), eol: content.includes('\r\n') ? '\r\n' : '\n' };
@@ -164,13 +165,127 @@ function apacheEdits(relativeFile, content) {
   return { content: lines.join(eol), edits };
 }
 
+function isEnvoy(relativeFile, content) {
+  return /envoy\.transport_sockets\.tls|(?:Downstream|Upstream)TlsContext/i.test(content)
+    || /^envoy(?:\..*)?\.ya?ml$/i.test(path.basename(relativeFile));
+}
+
+function indentOf(line) {
+  return line.match(/^[ \t]*/)[0].length;
+}
+
+// Mirrors src/scanner.js's context-block detection: a TLS context is the
+// subtree rooted at a Downstream/UpstreamTlsContext marker, bounded by the
+// marker's *parent* indentation (see the comment in scanner.js for why the
+// parent, not the marker itself, is the correct root).
+function envoyTlsContexts(lines) {
+  const contexts = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/(?:Downstream|Upstream)TlsContext/i.test(lines[index])) continue;
+    const markerIndent = indentOf(lines[index]);
+    let baseIndent = markerIndent;
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      if (lines[cursor].trim() === '') continue;
+      const cursorIndent = indentOf(lines[cursor]);
+      if (cursorIndent < markerIndent) { baseIndent = cursorIndent; break; }
+    }
+    let end = lines.length;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      if (lines[cursor].trim() === '') continue;
+      if (indentOf(lines[cursor]) <= baseIndent) { end = cursor; break; }
+    }
+    contexts.push({ start: index, end, markerIndent, baseIndent });
+  }
+  return contexts;
+}
+
+function envoyCurvesItemRange(lines, curvesLineIndex) {
+  const baseIndent = indentOf(lines[curvesLineIndex]);
+  let end = curvesLineIndex + 1;
+  for (; end < lines.length; end += 1) {
+    if (lines[end].trim() === '') continue;
+    if (indentOf(lines[end]) < baseIndent) break;
+    if (!/^\s*-\s*\S+/.test(lines[end])) break;
+  }
+  return { start: curvesLineIndex + 1, end };
+}
+
+function envoyEdits(relativeFile, content) {
+  const { lines, eol } = editableLines(content);
+  const edits = [];
+  const step = 2; // Envoy YAML bootstrap examples and this file's own nesting consistently use 2 spaces.
+
+  // Pass 1: line-count-preserving fixes (safe to apply forward).
+  for (const context of envoyTlsContexts(lines)) {
+    for (let index = context.start; index < context.end; index += 1) {
+      const legacy = lines[index].match(/^(\s*)(tls_minimum_protocol_version\s*:\s*)TLSv1_[01]\b(.*)$/);
+      if (legacy) {
+        const edit = replaceLine(lines, index, `${legacy[1]}${legacy[2]}TLSv1_2${legacy[3]}`, 'QF-ENVOY-LEGACY-TLS', relativeFile);
+        if (edit) edits.push(edit);
+      }
+    }
+  }
+
+  // Pass 2: structural fixes (line count changes), applied bottom-to-top so
+  // earlier edits never invalidate later indices.
+  const contexts = envoyTlsContexts(lines).sort((a, b) => b.start - a.start);
+  for (const context of contexts) {
+    let curvesLine = -1;
+    let tlsParamsLine = -1;
+    let commonTlsContextLine = -1;
+    for (let index = context.start; index < context.end; index += 1) {
+      if (curvesLine === -1 && /^\s*ecdh_curves\s*:/.test(lines[index])) curvesLine = index;
+      if (tlsParamsLine === -1 && /^\s*tls_params\s*:/.test(lines[index])) tlsParamsLine = index;
+      if (commonTlsContextLine === -1 && /^\s*common_tls_context\s*:/.test(lines[index])) commonTlsContextLine = index;
+    }
+
+    if (curvesLine >= 0) {
+      const range = envoyCurvesItemRange(lines, curvesLine);
+      const existing = lines.slice(range.start, range.end).map((line) => line.match(/^\s*-\s*(\S+)/)?.[1]).filter(Boolean);
+      if (existing.length > 0 && !existing.some((curve) => /MLKEM|KYBER/i.test(curve))) {
+        const itemIndent = ' '.repeat(indentOf(lines[range.start] ?? lines[curvesLine]));
+        const replacement = ENVOY_GROUPS.map((group) => `${itemIndent}- ${group}`);
+        lines.splice(range.start, range.end - range.start, ...replacement);
+        edits.push({ ruleId: 'QF-ENVOY-CLASSICAL-GROUPS', file: relativeFile, line: curvesLine + 1, before: existing.join(', '), after: ENVOY_GROUPS.join(', ') });
+      }
+      continue;
+    }
+
+    const newEcdhCurves = ['ecdh_curves:', ...ENVOY_GROUPS.map((group) => `- ${group}`)];
+    if (tlsParamsLine >= 0) {
+      // Key and list items share one indent (the common, valid YAML style
+      // this codebase generates everywhere it writes a new sequence).
+      const insertIndent = ' '.repeat(indentOf(lines[tlsParamsLine]) + step);
+      const inserted = newEcdhCurves.map((line) => `${insertIndent}${line}`);
+      lines.splice(tlsParamsLine + 1, 0, ...inserted);
+      edits.push({ ruleId: 'QF-ENVOY-MISSING-GROUP-POLICY', file: relativeFile, line: tlsParamsLine + 2, before: null, after: inserted[0] });
+    } else if (commonTlsContextLine >= 0) {
+      const inlineEmpty = lines[commonTlsContextLine].match(/^(\s*)common_tls_context\s*:\s*\{\s*\}\s*$/);
+      const baseIndent = indentOf(lines[commonTlsContextLine]) + step;
+      const tlsParamsIndent = ' '.repeat(baseIndent);
+      const ecdhIndent = ' '.repeat(baseIndent + step);
+      const inserted = [`${tlsParamsIndent}tls_params:`, `${ecdhIndent}ecdh_curves:`, ...ENVOY_GROUPS.map((group) => `${ecdhIndent}- ${group}`)];
+      if (inlineEmpty) lines[commonTlsContextLine] = `${inlineEmpty[1]}common_tls_context:`;
+      lines.splice(commonTlsContextLine + 1, 0, ...inserted);
+      edits.push({ ruleId: 'QF-ENVOY-MISSING-GROUP-POLICY', file: relativeFile, line: commonTlsContextLine + 2, before: null, after: inserted[0] });
+    }
+    // If neither tls_params nor common_tls_context is present in the
+    // context, the config shape does not match a real Envoy TLS context
+    // (e.g. a bare marker string in a comment or unrelated field); leave it
+    // untouched rather than guessing where to insert.
+  }
+
+  edits.sort((a, b) => a.line - b.line);
+  return { content: lines.join(eol), edits };
+}
+
 async function collectConfigFiles(root, current = root, output = []) {
   const entries = await fs.readdir(current, { withFileTypes: true });
   for (const entry of entries) {
     if (['.git', 'node_modules', 'dist', 'build'].includes(entry.name)) continue;
     const absolute = path.join(current, entry.name);
     if (entry.isDirectory()) await collectConfigFiles(root, absolute, output);
-    else if (entry.isFile() && (entry.name === 'nginx.conf' || entry.name === 'haproxy.cfg' || entry.name.endsWith('.conf') || entry.name.endsWith('.cfg'))) output.push(absolute);
+    else if (entry.isFile() && (entry.name === 'nginx.conf' || entry.name === 'haproxy.cfg' || entry.name.endsWith('.conf') || entry.name.endsWith('.cfg') || entry.name.endsWith('.yaml') || entry.name.endsWith('.yml'))) output.push(absolute);
   }
   return output;
 }
@@ -199,6 +314,10 @@ export async function migrateRepository(rootPath, { write = false, acknowledgeRu
     if (/^\s*SSLEngine\s+on\b|^\s*SSLOpenSSLConfCmd\s+/im.test(before)) {
       const apache = apacheEdits(relativeFile, result.content);
       result = { content: apache.content, edits: [...result.edits, ...apache.edits] };
+    }
+    if (isEnvoy(relativeFile, before)) {
+      const envoy = envoyEdits(relativeFile, result.content);
+      result = { content: envoy.content, edits: [...result.edits, ...envoy.edits] };
     }
     if (result.edits.length === 0) continue;
     proposed.push(...result.edits);

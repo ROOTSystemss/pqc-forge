@@ -17,6 +17,7 @@ function successfulRunner(calls) {
     calls.push({ executable, args });
     if (executable === 'openssl' && args[0] === 'version') return { executable, args, code: 0, stdout: 'OpenSSL 3.5.2 5 Aug 2025', stderr: '', error: null, durationMs: 1 };
     if (executable === 'openssl') return { executable, args, code: 0, stdout: 'X25519MLKEM768\nX25519\n', stderr: '', error: null, durationMs: 1 };
+    if (/envoy/i.test(executable)) return { executable, args, code: 0, stdout: 'envoy  version: 1867e3d/1.31.0/Clean/RELEASE/BoringSSL', stderr: '', error: null, durationMs: 1 };
     return { executable, args, code: 0, stdout: `${executable} version`, stderr: '', error: null, durationMs: 1 };
   };
 }
@@ -68,6 +69,36 @@ for (const server of ['nginx', 'haproxy', 'apache']) {
     assert.equal(calls.some((call) => call.args.includes(config)), true);
   });
 }
+
+test('runtime probe passes envoy via BoringSSL recognition, config hybrid group, and syntax validate (not the host OpenSSL)', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-runtime-envoy-'));
+  const config = path.join(root, 'envoy.yaml');
+  await fs.writeFile(config, 'ecdh_curves:\n- X25519MLKEM768\n- X25519\n');
+  const calls = [];
+  const probe = await probeRuntime('envoy', { configPath: config, runner: successfulRunner(calls), serverExecutable: 'envoy-test' });
+  assert.equal(probe.verdict.pass, true);
+  assert.equal(probe.tlsLibrary.name, 'boringssl');
+  assert.deepEqual(Object.keys(probe.checks).sort(), ['configContainsHybridGroup', 'configSyntaxValid', 'serverBuildAvailable', 'tlsLibraryRecognized'].sort());
+  // Exactly two commands: version and validate against the server binary
+  // itself — no system `openssl` invocation, since it would prove nothing
+  // about Envoy's statically linked BoringSSL.
+  assert.equal(calls.length, 2);
+  assert.equal(calls.every((call) => call.executable === 'envoy-test'), true);
+});
+
+test('runtime probe blocks envoy when the build is not BoringSSL-linked or config validation fails', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-runtime-envoy-blocked-'));
+  const config = path.join(root, 'envoy.yaml');
+  await fs.writeFile(config, 'ecdh_curves:\n- X25519\n');
+  const runner = async (executable, args) => {
+    if (args.includes('--mode')) return { executable, args, code: 1, stdout: '', stderr: 'config validation failed', error: null, durationMs: 1 };
+    return { executable, args, code: 0, stdout: 'envoy  version: 1867e3d/1.31.0/Clean/RELEASE/OpenSSL', stderr: '', error: null, durationMs: 1 };
+  };
+  const result = await writeRuntimeEvidence('envoy', path.join(root, 'evidence'), { configPath: config, runner, serverExecutable: 'envoy-test', signingKey: key });
+  assert.equal(result.probe.verdict.pass, false);
+  assert.deepEqual(result.probe.verdict.failures.sort(), ['configContainsHybridGroup', 'configSyntaxValid', 'tlsLibraryRecognized'].sort());
+  assert.equal(verifyReceipt(result.receipt).valid, true);
+});
 
 test('runtime probe reports every failed safety condition without throwing away evidence', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-runtime-blocked-'));

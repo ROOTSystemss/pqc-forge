@@ -119,6 +119,118 @@ const APACHE_MISSING_GROUP_POLICY = {
   automatable: true
 };
 
+const ENVOY_CLASSICAL_GROUPS = {
+  id: 'QF-ENVOY-CLASSICAL-GROUPS',
+  severity: 'high',
+  category: 'key-establishment',
+  reason: 'The Envoy TLS context declares an explicit ecdh_curves policy with no post-quantum or hybrid key exchange.',
+  remediation: 'Prepend X25519MLKEM768 and retain classical fallbacks; requires Envoy linked against a BoringSSL build that advertises the hybrid group.',
+  standard: 'IETF TLS hybrid ML-KEM',
+  automatable: true
+};
+
+const ENVOY_MISSING_GROUP_POLICY = {
+  id: 'QF-ENVOY-MISSING-GROUP-POLICY',
+  severity: 'high',
+  category: 'key-establishment',
+  reason: 'The Envoy TLS context has no explicit ecdh_curves policy, so it relies on the linked BoringSSL build\'s default groups, which may not include a post-quantum hybrid.',
+  remediation: 'Set tls_params.ecdh_curves to X25519MLKEM768 with classical fallbacks on an Envoy build with hybrid-capable BoringSSL.',
+  standard: 'IETF TLS hybrid ML-KEM',
+  automatable: true
+};
+
+const ENVOY_LEGACY_TLS = {
+  id: 'QF-ENVOY-LEGACY-TLS',
+  severity: 'medium',
+  category: 'protocol-baseline',
+  reason: 'The Envoy TLS context permits TLS 1.0/1.1, which cannot negotiate a PQC-capable TLS 1.3 handshake.',
+  remediation: 'Raise tls_minimum_protocol_version to TLSv1_2 while retaining TLSv1_3 support.',
+  standard: 'TLS 1.3',
+  automatable: true
+};
+
+function isEnvoy(relativeFile, content) {
+  return /envoy\.transport_sockets\.tls|(?:Downstream|Upstream)TlsContext/i.test(content)
+    || /^envoy(?:\..*)?\.ya?ml$/i.test(path.basename(relativeFile));
+}
+
+// Envoy's bootstrap format is indentation-scoped YAML, not line-oriented like
+// the other adapters' configs, so TLS contexts are located by indentation
+// depth rather than a single-line regex. A "context" is the subtree rooted at
+// a line naming Downstream/UpstreamTlsContext: it runs until indentation
+// returns to at or below that line's own indentation.
+function indentOf(line) {
+  return line.match(/^[ \t]*/)[0].length;
+}
+
+function envoyTlsContexts(lines) {
+  const contexts = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/(?:Downstream|Upstream)TlsContext/i.test(lines[index])) continue;
+    const markerIndent = indentOf(lines[index]);
+    // The marker (typically an "@type" line) is one key among several
+    // siblings under its parent (e.g. typed_config:), and the sibling that
+    // actually carries tls_params/ecdh_curves is common_tls_context, not a
+    // descendant of the marker itself. So the context's root is the marker's
+    // *parent* indentation, found by walking back to the nearest strictly
+    // shallower line; the context spans until indentation returns to or
+    // below that root.
+    let baseIndent = markerIndent;
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      if (lines[cursor].trim() === '') continue;
+      const cursorIndent = indentOf(lines[cursor]);
+      if (cursorIndent < markerIndent) { baseIndent = cursorIndent; break; }
+    }
+    let end = lines.length;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      if (lines[cursor].trim() === '') continue;
+      if (indentOf(lines[cursor]) <= baseIndent) { end = cursor; break; }
+    }
+    contexts.push({ start: index, end });
+  }
+  return contexts;
+}
+
+function envoyCurvesList(lines, curvesLineIndex) {
+  const baseIndent = indentOf(lines[curvesLineIndex]);
+  const curves = [];
+  for (let cursor = curvesLineIndex + 1; cursor < lines.length; cursor += 1) {
+    if (lines[cursor].trim() === '') continue;
+    // YAML allows a block sequence's "- item" markers to sit at the same
+    // indentation as their key (the common style) or deeper (also legal);
+    // anything shallower than the key means the list has ended.
+    if (indentOf(lines[cursor]) < baseIndent) break;
+    const item = lines[cursor].match(/^\s*-\s*(\S+)/);
+    if (item) curves.push(item[1]);
+    else break;
+  }
+  return curves;
+}
+
+function envoyFindings(relativeFile, lines) {
+  const findings = [];
+  for (const context of envoyTlsContexts(lines)) {
+    let curvesLine = -1;
+    let minVersionLine = -1;
+    for (let index = context.start; index < context.end; index += 1) {
+      if (curvesLine === -1 && /^\s*ecdh_curves\s*:/.test(lines[index])) curvesLine = index;
+      if (minVersionLine === -1 && /^\s*tls_minimum_protocol_version\s*:\s*TLSv1_[01]\b/.test(lines[index])) minVersionLine = index;
+    }
+    if (curvesLine >= 0) {
+      const curves = envoyCurvesList(lines, curvesLine);
+      if (curves.length > 0 && !curves.some((curve) => /MLKEM|KYBER/i.test(curve))) {
+        findings.push(lineFinding(ENVOY_CLASSICAL_GROUPS, relativeFile, lines[curvesLine], curvesLine + 1));
+      }
+    } else {
+      findings.push(lineFinding(ENVOY_MISSING_GROUP_POLICY, relativeFile, lines[context.start], context.start + 1));
+    }
+    if (minVersionLine >= 0) {
+      findings.push(lineFinding(ENVOY_LEGACY_TLS, relativeFile, lines[minVersionLine], minVersionLine + 1));
+    }
+  }
+  return findings;
+}
+
 function apacheMissingPolicyLines(lines) {
   let depth = 0;
   let globalPolicy = false;
@@ -272,6 +384,13 @@ export async function scanRepository(rootPath, { ignoreFile, now = new Date(), o
       const suppression = applicableSuppression(finding, suppressionConfig.suppressions, now);
       if (suppression) suppressedFindings.push({ ...finding, suppression: { reason: suppression.reason, expires: suppression.expires } });
       else findings.push(finding);
+    }
+    if (isEnvoy(relativeFile, content)) {
+      for (const finding of envoyFindings(relativeFile, lines)) {
+        const suppression = applicableSuppression(finding, suppressionConfig.suppressions, now);
+        if (suppression) suppressedFindings.push({ ...finding, suppression: { reason: suppression.reason, expires: suppression.expires } });
+        else findings.push(finding);
+      }
     }
   }
 

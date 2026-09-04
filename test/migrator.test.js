@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { migrateRepository } from '../src/migrator.js';
+import { scanRepository } from '../src/scanner.js';
 import { createMigrationReceipt, verifyReceipt } from '../src/breaklab/receipt.js';
 import { generateSigningKey } from '../src/signing.js';
 import { rollbackMigration } from '../src/rollback.js';
@@ -129,6 +130,67 @@ test('migrator updates and inserts Apache group policies per TLS virtual host', 
 test('migrator leaves non-TLS Apache configuration unchanged', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-apache-clear-'));
   await fs.writeFile(path.join(root, 'httpd.conf'), '<VirtualHost *:80>\n  DocumentRoot /var/www/html\n</VirtualHost>\n');
+  assert.equal((await migrateRepository(root)).changeCount, 0);
+});
+
+test('migrator fixes classical Envoy curves, missing group policy, and legacy TLS minimum idempotently', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-envoy-'));
+  const config = path.join(root, 'envoy.yaml');
+  const original = [
+    'static_resources:',
+    '  listeners:',
+    '  - filter_chains:',
+    '    - transport_socket:',
+    '        typed_config:',
+    '          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext',
+    '          common_tls_context:',
+    '            tls_params:',
+    '              tls_minimum_protocol_version: TLSv1_1',
+    '              ecdh_curves:',
+    '              - X25519',
+    '              - P-256',
+    '  clusters:',
+    '  - transport_socket:',
+    '      typed_config:',
+    '        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext',
+    '        common_tls_context: {}',
+    ''
+  ].join('\n');
+  await fs.writeFile(config, original);
+  const dryRun = await migrateRepository(root);
+  assert.equal(dryRun.changeCount, 3);
+  assert.equal(dryRun.artifacts.length, 1);
+  const applied = await migrateRepository(root, { write: true, acknowledgeRuntime: true });
+  assert.equal(applied.mode, 'applied');
+  const migrated = await fs.readFile(config, 'utf8');
+  assert.match(migrated, /tls_minimum_protocol_version: TLSv1_2/);
+  assert.match(migrated, /ecdh_curves:\n\s*- X25519MLKEM768\n\s*- X25519\n\s*- P-256/);
+  assert.doesNotMatch(migrated, /common_tls_context:\s*\{\}/);
+  assert.equal((await migrateRepository(root)).changeCount, 0);
+  const rescan = await scanRepository(root);
+  assert.equal(rescan.findings.some((finding) => finding.id.startsWith('QF-ENVOY-')), false);
+  const receipt = createMigrationReceipt(applied, key);
+  await rollbackMigration(receipt, { write: true });
+  assert.equal(await fs.readFile(config, 'utf8'), original);
+});
+
+test('migrator leaves an Envoy config with an already-hybrid group policy unchanged', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-envoy-clean-'));
+  await fs.writeFile(path.join(root, 'envoy.yaml'), [
+    'static_resources:',
+    '  listeners:',
+    '  - filter_chains:',
+    '    - transport_socket:',
+    '        typed_config:',
+    '          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext',
+    '          common_tls_context:',
+    '            tls_params:',
+    '              tls_minimum_protocol_version: TLSv1_2',
+    '              ecdh_curves:',
+    '              - X25519MLKEM768',
+    '              - X25519',
+    ''
+  ].join('\n'));
   assert.equal((await migrateRepository(root)).changeCount, 0);
 });
 

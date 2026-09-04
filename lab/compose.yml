@@ -1,3 +1,6 @@
+volumes:
+  envoy-certs:
+
 services:
   classical-rsa:
     image: pqc-forge-protocol-lab:0.10.0
@@ -34,3 +37,69 @@ services:
     profiles: [tools]
     entrypoint: ["/opt/openssl/bin/openssl"]
     command: ["version", "-a"]
+
+  # Envoy links a static BoringSSL build rather than the project's own
+  # OpenSSL, so it cannot generate its own TLS certificate the way the nginx
+  # services do in entrypoint.sh. envoy-cert-init reuses this image's pinned
+  # OpenSSL 3.5.8 build to write one into a shared volume before any envoy-*
+  # service starts.
+  envoy-cert-init:
+    image: pqc-forge-protocol-lab:0.10.0
+    profiles: [tools]
+    entrypoint: ["/usr/local/bin/pqc-lab-gen-certs"]
+    environment:
+      CERTIFICATE_ALGORITHM: RSA
+      SERVER_NAME: envoy-lab
+    volumes:
+      - envoy-certs:/certs
+
+  # Pinned by content digest (envoyproxy/envoy:v1.36-latest resolved on
+  # 2026-09-03) rather than a floating tag, matching this project's pinning
+  # policy elsewhere. Empirically confirmed against this exact image: a real
+  # TLS 1.3 handshake from this project's own OpenSSL 3.5.8 client
+  # negotiates X25519MLKEM768 when ecdh_curves includes it, and correctly
+  # falls back to X25519 when it does not.
+  envoy-hybrid:
+    image: envoyproxy/envoy@sha256:3a76238cdf52c7a3e33951f44c02d694108e6481feffe6663bf9319f55ec1394
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        sed -e "s|__TLS_GROUPS__|$$TLS_GROUPS|g" -e "s|__SERVER_NAME__|$$SERVER_NAME|g"
+        /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml &&
+        exec envoy -c /tmp/envoy.yaml --concurrency 1
+    environment:
+      TLS_GROUPS: '["X25519MLKEM768", "X25519"]'
+      SERVER_NAME: envoy_hybrid
+    volumes:
+      - envoy-certs:/certs:ro
+      - ./envoy.template.yaml:/etc/envoy/envoy.template.yaml:ro
+
+  envoy-pqonly:
+    image: envoyproxy/envoy@sha256:3a76238cdf52c7a3e33951f44c02d694108e6481feffe6663bf9319f55ec1394
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        sed -e "s|__TLS_GROUPS__|$$TLS_GROUPS|g" -e "s|__SERVER_NAME__|$$SERVER_NAME|g"
+        /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml &&
+        exec envoy -c /tmp/envoy.yaml --concurrency 1
+    environment:
+      TLS_GROUPS: '["X25519MLKEM768"]'
+      SERVER_NAME: envoy_pqonly
+    volumes:
+      - envoy-certs:/certs:ro
+      - ./envoy.template.yaml:/etc/envoy/envoy.template.yaml:ro
+
+  envoy-classical:
+    image: envoyproxy/envoy@sha256:3a76238cdf52c7a3e33951f44c02d694108e6481feffe6663bf9319f55ec1394
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        sed -e "s|__TLS_GROUPS__|$$TLS_GROUPS|g" -e "s|__SERVER_NAME__|$$SERVER_NAME|g"
+        /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml &&
+        exec envoy -c /tmp/envoy.yaml --concurrency 1
+    environment:
+      TLS_GROUPS: '["X25519"]'
+      SERVER_NAME: envoy_classical
+    volumes:
+      - envoy-certs:/certs:ro
+      - ./envoy.template.yaml:/etc/envoy/envoy.template.yaml:ro
