@@ -56,6 +56,18 @@ test("decryptWithKey rejects a tampered ciphertext", () => {
   assert.match((result as { reason: string }).reason, /decryption failed/);
 });
 
+test("decryptWithKey rejects a malformed (wrong-length) KEM ciphertext without throwing", () => {
+  const pair = generateKemKeyPair();
+  const keyFile = toKemKeyFile(pair);
+  const plaintext = new TextEncoder().encode("payload");
+  const encrypted = encryptForRecipient(pair.publicKey, keyFile.keyId, plaintext);
+
+  const tampered = { ...encrypted, kemCiphertext: Buffer.from([1, 2, 3]).toString("base64") };
+  const result = decryptWithKey(pair, keyFile.keyId, tampered);
+  assert.equal(result.ok, false);
+  assert.match((result as { reason: string }).reason, /KEM decapsulation failed/);
+});
+
 test("decryptWithKey rejects a keyId mismatch", () => {
   const pair = generateKemKeyPair();
   const keyFile = toKemKeyFile(pair);

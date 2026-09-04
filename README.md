@@ -25,7 +25,8 @@ pqc-forge keygen
 # Sign a file -> writes <file>.sig.json next to it
 pqc-forge sign ./release.tar.gz
 
-# Verify a file against its signature
+# Verify a file against its signature (see "Sharing keys" below for
+# why this normally uses a public-only export, not your full key file)
 pqc-forge verify ./release.tar.gz
 ```
 
@@ -51,6 +52,25 @@ Pass `-k <path>` to use a different key file, `-o <path>` to control
 output locations, and (for `verify`) `-s <path>` to point at a signature
 file that isn't named `<file>.sig.json`.
 
+### Sharing keys with someone else
+
+`keygen`/`kem-keygen` write a file containing **both** halves of the
+keypair. That's fine for your own use, but the whole point of public-key
+crypto is that other people only ever need your *public* key — to give
+someone the ability to verify your signatures or encrypt files to you
+without also handing them the power to sign as you or read everything
+encrypted to you, strip the secret key first:
+
+```sh
+pqc-forge export-pubkey ./signing-key.json -o alice-signing.pub.json
+pqc-forge export-pubkey ./kem-key.json     -o alice-kem.pub.json
+```
+
+The resulting file has the same `keyId` and schema, just no `secretKey`
+field. `verify` and `encrypt` both work fine against a public-only file;
+`sign` and `decrypt` fail with a clear error if you point them at one
+("this key file has no secret key...").
+
 ## File formats
 
 **Signing key file** (`pqc-forge.signing-key/v1`):
@@ -68,6 +88,10 @@ file that isn't named `<file>.sig.json`.
 
 **KEM key file** (`pqc-forge.kem-key/v1`) has the same shape with
 `algorithm: "ML-KEM-768"`.
+
+`secretKey` is omitted entirely from a public-only export produced by
+`export-pubkey` (see "Sharing keys" above) — everything else about the
+file is unchanged.
 
 For both, `keyId` is `sha256` of the base64-encoded public key *string*
 (not the raw public key bytes), and is recomputed and checked whenever a
@@ -124,14 +148,16 @@ key file is loaded.
 npm test
 ```
 
-Runs the `node:test`-based suite (keygen sizing/determinism, key-file
-tamper detection, sign/verify, and encrypt/decrypt — including
-wrong-key and tampered-ciphertext rejection). GitHub Actions
+Runs the `node:test`-based suite: unit tests for the key/sign/KEM/
+encrypt library functions (sizing, determinism, tamper detection, public-
+key export, wrong-key and tampered-ciphertext rejection) plus integration
+tests that spawn the real compiled CLI end-to-end. GitHub Actions
 (`.github/workflows/ci.yml`) runs the same on Node 20.x/22.x across
 Linux and Windows on every push/PR once this repo has a remote.
 
 ## Status
 
 Signing (ML-DSA-65) and encryption (ML-KEM-768 + AES-256-GCM) are
-implemented and tested; `pqc-forge` can be `npm link`ed as a global
-command. Not yet: npm publish, a real (non-local) CI run.
+implemented and tested, including public-key-only export/sharing;
+`pqc-forge` can be `npm link`ed as a global command. Not yet: a GitHub
+remote (so CI actually runs) and an npm publish.

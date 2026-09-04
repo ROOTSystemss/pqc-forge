@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   generateKeyPair,
   toKeyFile,
+  toPublicKeyFile,
   parseKeyFile,
   keyFileToPair,
+  keyFileToPublicKey,
   computeKeyId,
   ALGORITHM,
   KEY_SCHEMA,
@@ -62,6 +64,33 @@ test("parseKeyFile rejects an unsupported algorithm", () => {
   const file = toKeyFile(generateKeyPair());
   const tampered = { ...file, algorithm: "ML-DSA-44" };
   assert.throws(() => parseKeyFile(JSON.stringify(tampered)), /unsupported algorithm/);
+});
+
+test("toPublicKeyFile strips the secret key but keeps keyId/publicKey intact", () => {
+  const file = toKeyFile(generateKeyPair());
+  const pub = toPublicKeyFile(file);
+  assert.equal(pub.secretKey, undefined);
+  assert.equal(pub.publicKey, file.publicKey);
+  assert.equal(pub.keyId, file.keyId);
+  assert.equal(JSON.stringify(pub).includes("secretKey"), false);
+});
+
+test("keyFileToPublicKey works on a public-only export", () => {
+  const pair = generateKeyPair();
+  const pub = toPublicKeyFile(toKeyFile(pair));
+  const decoded = keyFileToPublicKey(pub);
+  assert.deepEqual(Buffer.from(decoded), Buffer.from(pair.publicKey));
+});
+
+test("keyFileToPair throws a clear error on a public-only export", () => {
+  const pub = toPublicKeyFile(toKeyFile(generateKeyPair()));
+  assert.throws(() => keyFileToPair(pub), /has no secret key/);
+});
+
+test("parseKeyFile accepts a public-only export round-tripped through JSON", () => {
+  const pub = toPublicKeyFile(toKeyFile(generateKeyPair()));
+  const parsed = parseKeyFile(JSON.stringify(pub));
+  assert.deepEqual(parsed, pub);
 });
 
 test("computeKeyId matches the known real-world key format", () => {

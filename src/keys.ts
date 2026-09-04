@@ -12,7 +12,8 @@ export interface SigningKeyFile {
   keyId: string;
   createdAt: string;
   publicKey: string; // base64
-  secretKey: string; // base64
+  /** Absent for a public-key-only export (see toPublicKeyFile) — such a file can verify but not sign. */
+  secretKey?: string; // base64
 }
 
 export interface KeyPair {
@@ -47,6 +48,17 @@ export function toKeyFile(pair: KeyPair, createdAt: Date = new Date()): SigningK
   };
 }
 
+/** Strips the secret key so the result is safe to hand to someone else (they can verify with it, not sign). */
+export function toPublicKeyFile(key: SigningKeyFile): SigningKeyFile {
+  return {
+    schema: key.schema,
+    algorithm: key.algorithm,
+    keyId: key.keyId,
+    createdAt: key.createdAt,
+    publicKey: key.publicKey,
+  };
+}
+
 export function parseKeyFile(raw: string): SigningKeyFile {
   const parsed = JSON.parse(raw) as SigningKeyFile;
   if (parsed.schema !== KEY_SCHEMA) {
@@ -64,9 +76,20 @@ export function parseKeyFile(raw: string): SigningKeyFile {
   return parsed;
 }
 
+/** Decodes the public key only — works for both full keypair files and public-only exports. */
+export function keyFileToPublicKey(key: SigningKeyFile): Uint8Array {
+  return Buffer.from(key.publicKey, "base64");
+}
+
+/** Decodes the full keypair. Throws if `key` is a public-only export (no secretKey). */
 export function keyFileToPair(key: SigningKeyFile): KeyPair {
+  if (!key.secretKey) {
+    throw new Error(
+      "this key file has no secret key (it looks like a public-key-only export) — it can verify but not sign",
+    );
+  }
   return {
-    publicKey: Buffer.from(key.publicKey, "base64"),
+    publicKey: keyFileToPublicKey(key),
     secretKey: Buffer.from(key.secretKey, "base64"),
   };
 }

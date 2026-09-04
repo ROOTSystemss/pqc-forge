@@ -18,6 +18,12 @@ test("verifyBytes rejects a tampered message", () => {
   assert.equal(verifyBytes(pair.publicKey, tampered, signature), false);
 });
 
+test("verifyBytes returns false (not a throw) for a malformed-length signature", () => {
+  const pair = generateKeyPair();
+  const message = new TextEncoder().encode("hello");
+  assert.equal(verifyBytes(pair.publicKey, message, new Uint8Array(10)), false);
+});
+
 test("verifyBytes rejects a signature made with a different key", () => {
   const a = generateKeyPair();
   const b = generateKeyPair();

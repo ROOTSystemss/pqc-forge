@@ -6,16 +6,22 @@ import { dirname, join } from "node:path";
 import {
   generateKeyPair,
   toKeyFile,
+  toPublicKeyFile,
   parseKeyFile,
   keyFileToPair,
+  keyFileToPublicKey,
+  KEY_SCHEMA,
   type SigningKeyFile,
 } from "./keys.js";
 import { buildSignatureFile, verifySignatureFile, type SignatureFile } from "./sign.js";
 import {
   generateKemKeyPair,
   toKemKeyFile,
+  toKemPublicKeyFile,
   parseKemKeyFile,
   kemKeyFileToPair,
+  kemKeyFileToPublicKey,
+  KEM_KEY_SCHEMA,
   type KemKeyFile,
 } from "./kem.js";
 import { encryptForRecipient, decryptWithKey, type EncryptedFile } from "./encrypt.js";
@@ -115,6 +121,30 @@ program
   );
 
 program
+  .command("export-pubkey")
+  .description("Strip the secret key from a signing or KEM key file, producing a file safe to share")
+  .argument("<key-file>", "path to a full pqc-forge signing-key or kem-key file")
+  .option("-o, --out <path>", "path to write the public-only key file (default: <key-file> with .pub.json before the extension)")
+  .action(
+    action((keyFilePath: string, opts: { out?: string }) => {
+      const raw = readJsonFile<{ schema?: string }>(keyFilePath, "key file");
+      let publicOnly: SigningKeyFile | KemKeyFile;
+      if (raw.schema === KEY_SCHEMA) {
+        publicOnly = toPublicKeyFile(parseKeyFile(readFileSync(keyFilePath, "utf8")));
+      } else if (raw.schema === KEM_KEY_SCHEMA) {
+        publicOnly = toKemPublicKeyFile(parseKemKeyFile(readFileSync(keyFilePath, "utf8")));
+      } else {
+        throw new Error(
+          `unrecognized key schema: ${raw.schema} (expected "${KEY_SCHEMA}" or "${KEM_KEY_SCHEMA}")`,
+        );
+      }
+      const outPath = opts.out ?? keyFilePath.replace(/(\.json)?$/, ".pub.json");
+      writeFileSync(outPath, JSON.stringify(publicOnly, null, 2) + "\n");
+      console.log(`wrote public-only ${publicOnly.algorithm} key ${publicOnly.keyId} to ${outPath}`);
+    }),
+  );
+
+program
   .command("sign")
   .description("Sign a file")
   .argument("<file>", "path to the file to sign")
@@ -144,7 +174,7 @@ program
       const sigPath = opts.sig ?? `${file}.sig.json`;
       const sigFile = readJsonFile<SignatureFile>(sigPath, "signature file");
       const message = readInputFile(file);
-      const result = verifySignatureFile(keyFileToPair(keyFile).publicKey, keyFile.keyId, message, sigFile);
+      const result = verifySignatureFile(keyFileToPublicKey(keyFile), keyFile.keyId, message, sigFile);
       if (result.ok) {
         console.log(`OK: ${file} matches signature from key ${keyFile.keyId}`);
       } else {
@@ -164,7 +194,7 @@ program
     action((file: string, opts: { key: string; out?: string }) => {
       const recipient = loadKemKeyFile(opts.key);
       const plaintext = readInputFile(file);
-      const encrypted = encryptForRecipient(kemKeyFileToPair(recipient).publicKey, recipient.keyId, plaintext);
+      const encrypted = encryptForRecipient(kemKeyFileToPublicKey(recipient), recipient.keyId, plaintext);
       const outPath = opts.out ?? `${file}.enc.json`;
       writeFileSync(outPath, JSON.stringify(encrypted, null, 2) + "\n");
       console.log(`encrypted ${file} for key ${recipient.keyId} -> ${outPath}`);

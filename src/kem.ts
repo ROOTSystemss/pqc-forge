@@ -12,7 +12,8 @@ export interface KemKeyFile {
   keyId: string;
   createdAt: string;
   publicKey: string; // base64
-  secretKey: string; // base64
+  /** Absent for a public-key-only export (see toKemPublicKeyFile) — such a file can encrypt but not decrypt. */
+  secretKey?: string; // base64
 }
 
 export interface KemKeyPair {
@@ -47,6 +48,17 @@ export function toKemKeyFile(pair: KemKeyPair, createdAt: Date = new Date()): Ke
   };
 }
 
+/** Strips the secret key so the result is safe to hand to someone else (they can encrypt to it, not decrypt). */
+export function toKemPublicKeyFile(key: KemKeyFile): KemKeyFile {
+  return {
+    schema: key.schema,
+    algorithm: key.algorithm,
+    keyId: key.keyId,
+    createdAt: key.createdAt,
+    publicKey: key.publicKey,
+  };
+}
+
 export function parseKemKeyFile(raw: string): KemKeyFile {
   const parsed = JSON.parse(raw) as KemKeyFile;
   if (parsed.schema !== KEM_KEY_SCHEMA) {
@@ -64,9 +76,20 @@ export function parseKemKeyFile(raw: string): KemKeyFile {
   return parsed;
 }
 
+/** Decodes the public key only — works for both full keypair files and public-only exports. */
+export function kemKeyFileToPublicKey(key: KemKeyFile): Uint8Array {
+  return Buffer.from(key.publicKey, "base64");
+}
+
+/** Decodes the full keypair. Throws if `key` is a public-only export (no secretKey). */
 export function kemKeyFileToPair(key: KemKeyFile): KemKeyPair {
+  if (!key.secretKey) {
+    throw new Error(
+      "this key file has no secret key (it looks like a public-key-only export) — it can encrypt but not decrypt",
+    );
+  }
   return {
-    publicKey: Buffer.from(key.publicKey, "base64"),
+    publicKey: kemKeyFileToPublicKey(key),
     secretKey: Buffer.from(key.secretKey, "base64"),
   };
 }

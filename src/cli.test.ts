@@ -149,6 +149,62 @@ test("decrypt refuses to write over the input file when -o is omitted and names 
   });
 });
 
+test("export-pubkey + verify with the public-only signing key file", () => {
+  withTempDir((dir) => {
+    const keyPath = join(dir, "signer.json");
+    const pubPath = join(dir, "signer.pub.json");
+    const filePath = join(dir, "release.txt");
+    writeFileSync(filePath, "release contents");
+
+    run(["keygen", "-o", keyPath], dir);
+    const exportResult = run(["export-pubkey", keyPath, "-o", pubPath], dir);
+    assert.equal(exportResult.status, 0, exportResult.stderr);
+    assert.equal(JSON.parse(readFileSync(pubPath, "utf8")).secretKey, undefined);
+
+    run(["sign", filePath, "-k", keyPath], dir);
+    const verify = run(["verify", filePath, "-k", pubPath], dir);
+    assert.equal(verify.status, 0, verify.stderr);
+
+    const signWithPubOnly = run(["sign", filePath, "-k", pubPath], dir);
+    assert.equal(signWithPubOnly.status, 1);
+    assert.match(signWithPubOnly.stderr, /has no secret key/);
+  });
+});
+
+test("export-pubkey + encrypt with the public-only KEM key file", () => {
+  withTempDir((dir) => {
+    const keyPath = join(dir, "recipient.json");
+    const pubPath = join(dir, "recipient.pub.json");
+    const filePath = join(dir, "msg.txt");
+    const outPath = join(dir, "msg.out.txt");
+    writeFileSync(filePath, "secret payload");
+
+    run(["kem-keygen", "-o", keyPath], dir);
+    run(["export-pubkey", keyPath, "-o", pubPath], dir);
+
+    const encrypt = run(["encrypt", filePath, "-k", pubPath], dir);
+    assert.equal(encrypt.status, 0, encrypt.stderr);
+
+    const decrypt = run(["decrypt", `${filePath}.enc.json`, "-k", keyPath, "-o", outPath], dir);
+    assert.equal(decrypt.status, 0, decrypt.stderr);
+    assert.equal(readFileSync(outPath, "utf8"), "secret payload");
+
+    const decryptWithPubOnly = run(["decrypt", `${filePath}.enc.json`, "-k", pubPath, "-o", outPath], dir);
+    assert.equal(decryptWithPubOnly.status, 1);
+    assert.match(decryptWithPubOnly.stderr, /has no secret key/);
+  });
+});
+
+test("export-pubkey rejects a file with an unrecognized schema", () => {
+  withTempDir((dir) => {
+    const badPath = join(dir, "not-a-key.json");
+    writeFileSync(badPath, JSON.stringify({ schema: "something-else/v1" }));
+    const result = run(["export-pubkey", badPath], dir);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /unrecognized key schema/);
+  });
+});
+
 test("decrypt fails cleanly with the wrong KEM key", () => {
   withTempDir((dir) => {
     const keyPathA = join(dir, "a.json");

@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   generateKemKeyPair,
   toKemKeyFile,
+  toKemPublicKeyFile,
   parseKemKeyFile,
   kemKeyFileToPair,
+  kemKeyFileToPublicKey,
   computeKemKeyId,
   KEM_ALGORITHM,
   KEM_KEY_SCHEMA,
@@ -62,4 +64,25 @@ test("parseKemKeyFile rejects an unsupported algorithm", () => {
   const file = toKemKeyFile(generateKemKeyPair());
   const tampered = { ...file, algorithm: "ML-KEM-512" };
   assert.throws(() => parseKemKeyFile(JSON.stringify(tampered)), /unsupported algorithm/);
+});
+
+test("toKemPublicKeyFile strips the secret key but keeps keyId/publicKey intact", () => {
+  const file = toKemKeyFile(generateKemKeyPair());
+  const pub = toKemPublicKeyFile(file);
+  assert.equal(pub.secretKey, undefined);
+  assert.equal(pub.publicKey, file.publicKey);
+  assert.equal(pub.keyId, file.keyId);
+  assert.equal(JSON.stringify(pub).includes("secretKey"), false);
+});
+
+test("kemKeyFileToPublicKey works on a public-only export", () => {
+  const pair = generateKemKeyPair();
+  const pub = toKemPublicKeyFile(toKemKeyFile(pair));
+  const decoded = kemKeyFileToPublicKey(pub);
+  assert.deepEqual(Buffer.from(decoded), Buffer.from(pair.publicKey));
+});
+
+test("kemKeyFileToPair throws a clear error on a public-only export", () => {
+  const pub = toKemPublicKeyFile(toKemKeyFile(generateKemKeyPair()));
+  assert.throws(() => kemKeyFileToPair(pub), /has no secret key/);
 });
