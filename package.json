@@ -1,7 +1,7 @@
 {
   "name": "pqc-forge",
   "version": "0.1.0",
-  "description": "Post-quantum (ML-DSA) signing CLI and library",
+  "description": "Post-quantum signing (ML-DSA) and encryption (ML-KEM) CLI and library",
   "type": "module",
   "bin": {
     "pqc-forge": "./dist/cli.js"
