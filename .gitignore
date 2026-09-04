@@ -1,4 +1,5 @@
 node_modules/
+pqc-forge-api-data/
 .npm-cache/
 protocol-output/
 demo-pr-pack*/

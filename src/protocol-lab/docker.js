@@ -66,10 +66,19 @@ function execute(file, args, { cwd = projectRoot, timeoutMs = 180000 } = {}) {
   });
 }
 
-const composeArgs = (...args) => ['compose', '-f', composeFile, '--project-name', 'pqc-forge-lab', ...args];
+const DEFAULT_PROJECT_NAME = 'pqc-forge-lab';
 
-async function runCase(testCase) {
-  const args = composeArgs('run', '--rm', '--no-deps', '--entrypoint', '/opt/openssl/bin/openssl', 'client',
+// Compose project name scopes container names, the network, and named
+// volumes together (Docker prefixes all of them with it). Callers running
+// concurrent labs — e.g. the API server's job queue, one lab per job —
+// MUST pass a distinct projectName per run, or two runs collide on the same
+// container/network/volume names and corrupt each other's state.
+function composeArgs(projectName, ...args) {
+  return ['compose', '-f', composeFile, '--project-name', projectName, ...args];
+}
+
+async function runCase(projectName, testCase) {
+  const args = composeArgs(projectName, 'run', '--rm', '--no-deps', '--entrypoint', '/opt/openssl/bin/openssl', 'client',
     's_client', '-connect', testCase.target, '-servername', testCase.target.split(':')[0], '-tls1_3', '-groups', testCase.groups, '-brief');
   let execution;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
@@ -112,15 +121,15 @@ export async function dockerStatus() {
   }
 }
 
-export async function runDockerProtocolLab() {
+export async function runDockerProtocolLab({ projectName = DEFAULT_PROJECT_NAME } = {}) {
   const status = await dockerStatus();
   if (!status.ready) throw new Error(`${status.code}: ${status.detail}\nAction: ${status.action}`);
   const docker = status.command;
-  const build = await execute(docker, composeArgs('build'), { timeoutMs: 900000 });
+  const build = await execute(docker, composeArgs(projectName, 'build'), { timeoutMs: 900000 });
   if (build.code !== 0) throw new Error(`Protocol lab image build failed: ${(build.stderr || build.stdout).slice(-4000)}`);
-  const certInit = await execute(docker, composeArgs('run', '--rm', 'envoy-cert-init'), { timeoutMs: 60000 });
+  const certInit = await execute(docker, composeArgs(projectName, 'run', '--rm', 'envoy-cert-init'), { timeoutMs: 60000 });
   if (certInit.code !== 0) throw new Error(`Envoy cert generation failed: ${(certInit.stderr || certInit.stdout).slice(-4000)}`);
-  const started = await execute(docker, composeArgs('up', '-d',
+  const started = await execute(docker, composeArgs(projectName, 'up', '-d',
     'classical-rsa', 'hybrid-rsa', 'pqonly-rsa', 'hybrid-mldsa',
     'envoy-hybrid', 'envoy-pqonly', 'envoy-classical'), { timeoutMs: 120000 });
   const results = [];
@@ -131,23 +140,23 @@ export async function runDockerProtocolLab() {
     const requiredServices = ['classical-rsa', 'hybrid-rsa', 'pqonly-rsa', 'hybrid-mldsa', 'envoy-hybrid', 'envoy-pqonly', 'envoy-classical'];
     let runningServices = [];
     for (let attempt = 1; attempt <= 10; attempt += 1) {
-      const running = await execute(docker, composeArgs('ps', '--status', 'running', '--services'), { timeoutMs: 30000 });
+      const running = await execute(docker, composeArgs(projectName, 'ps', '--status', 'running', '--services'), { timeoutMs: 30000 });
       runningServices = running.stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
       if (requiredServices.every((service) => runningServices.includes(service))) break;
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     const [state, logs] = await Promise.all([
-      execute(docker, composeArgs('ps', '--all'), { timeoutMs: 30000 }),
-      execute(docker, composeArgs('logs', '--no-color'), { timeoutMs: 30000 })
+      execute(docker, composeArgs(projectName, 'ps', '--all'), { timeoutMs: 30000 }),
+      execute(docker, composeArgs(projectName, 'logs', '--no-color'), { timeoutMs: 30000 })
     ]);
     serviceState = `${state.stdout}\n${state.stderr}`.trim();
     serviceLogs = `${logs.stdout}\n${logs.stderr}`.trim();
     if (!requiredServices.every((service) => runningServices.includes(service))) {
       throw new Error(`Protocol lab servers did not remain running.\n${serviceState}\n${serviceLogs}`);
     }
-    for (const testCase of PROTOCOL_CASES) results.push(await runCase(testCase));
+    for (const testCase of PROTOCOL_CASES) results.push(await runCase(projectName, testCase));
   } finally {
-    await execute(docker, composeArgs('down', '--volumes', '--remove-orphans'), { timeoutMs: 120000 }).catch(() => {});
+    await execute(docker, composeArgs(projectName, 'down', '--volumes', '--remove-orphans'), { timeoutMs: 120000 }).catch(() => {});
   }
   const highestSeverity = Math.max(0, ...results.map((result) => result.severity));
   const unexpectedHighestSeverity = Math.max(0, ...results.flatMap((result) => result.findings.filter((finding) => result.unexpectedFindings.includes(finding.code)).map((finding) => finding.severity)));

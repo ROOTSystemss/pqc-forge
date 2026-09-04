@@ -17,6 +17,7 @@ import { validateCorpus } from './validation.js';
 import { createContainerRunner, writeRuntimeEvidence } from './runtime-probe.js';
 import { writeStagingEvidence } from './staging-gate.js';
 import { generateSigningKey, loadSigningKey, publicKeyDocument } from './signing.js';
+import { provisionTenant } from './api/server.js';
 
 const HELP = `PQC Forge — repository-to-patch migration evidence
 
@@ -34,6 +35,7 @@ Usage:
   pqc-forge doctor [--json]
   pqc-forge keygen --out <directory> [--json]
   pqc-forge verify-receipt <receipt.json> [--trusted-key file]... [--json]
+  pqc-forge tenant-create --name <name> --out <api-data-directory> [--json]
 
 Commands:
   scan      Find quantum-vulnerable crypto with file/line evidence.
@@ -49,6 +51,7 @@ Commands:
   doctor    Check Docker, Compose, and engine readiness with corrective guidance.
   keygen    Generate an ML-DSA-65 signing identity for evidence receipts.
   verify-receipt  Verify a PQC Forge receipt's SHA-256 digest and ML-DSA signature.
+  tenant-create  Provision a new API tenant and print its API key once.
 
 Signing:
   Every receipt PQC Forge writes is ML-DSA-65 signed as well as SHA-256
@@ -124,7 +127,7 @@ export async function run(args) {
     console.log(HELP);
     return;
   }
-  if (!target && !['protocol-lab', 'doctor', 'keygen'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
+  if (!target && !['protocol-lab', 'doctor', 'keygen', 'tenant-create'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
 
   const json = args.includes('--json');
   const signingKeyOption = optionValue(args, '--signing-key', null);
@@ -153,6 +156,20 @@ export async function run(args) {
       console.log(`Secret key (keep private): ${keyPath}`);
       console.log(`Public key (safe to distribute as a trust root): ${publicPath}`);
       console.log('Set PQC_FORGE_SIGNING_KEY to this secret key path, or pass --signing-key, to sign receipts with it.');
+    }
+    return;
+  }
+  if (command === 'tenant-create') {
+    const outValue = optionValue(args, '--out', null);
+    const name = optionValue(args, '--name', null);
+    if (!outValue) throw new Error('tenant-create requires --out <api-data-directory>.');
+    if (!name) throw new Error('tenant-create requires --name <name>.');
+    const { tenantId, apiKey } = await provisionTenant(path.resolve(outValue), name);
+    if (json) console.log(JSON.stringify({ tenantId, apiKey }, null, 2));
+    else {
+      console.log(`Tenant ${tenantId} created.`);
+      console.log(`API key (shown once, not recoverable): ${apiKey}`);
+      console.log('Store it now — only its hash is persisted.');
     }
     return;
   }

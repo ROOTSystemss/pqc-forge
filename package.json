@@ -4,10 +4,12 @@
   "description": "Nginx, HAProxy, and Apache repository-to-patch PQC migration evidence CLI",
   "type": "module",
   "bin": {
-    "pqc-forge": "./bin/pqc-forge.js"
+    "pqc-forge": "./bin/pqc-forge.js",
+    "pqc-forge-api": "./bin/pqc-forge-api.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
+    "api": "node ./bin/pqc-forge-api.js",
     "demo": "node ./bin/pqc-forge.js scan ./test/fixtures/vulnerable",
     "demo:migrate": "node ./bin/pqc-forge.js migrate ./test/fixtures/vulnerable",
     "demo:breaklab": "node ./bin/pqc-forge.js breaklab ./scenarios/tls-migration-demo.json --budget 30 --seed 42 --out ./demo-output --no-fail",
