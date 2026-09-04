@@ -48,6 +48,37 @@ function writeKeyFileSafely(path: string, contents: string, force: boolean): boo
   return true;
 }
 
+function readInputFile(path: string): Buffer {
+  if (!existsSync(path)) {
+    throw new Error(`input file not found: ${path}`);
+  }
+  return readFileSync(path);
+}
+
+function readJsonFile<T>(path: string, kind: string): T {
+  if (!existsSync(path)) {
+    throw new Error(`${kind} not found: ${path}`);
+  }
+  const raw = readFileSync(path, "utf8");
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(`${kind} at ${path} is not valid JSON (corrupt or truncated file?)`);
+  }
+}
+
+/** Wraps a command action so thrown Errors become a clean "Error: ..." line + exit 1 instead of a raw stack trace. */
+function action<Args extends unknown[]>(fn: (...args: Args) => void): (...args: Args) => void {
+  return (...args: Args) => {
+    try {
+      fn(...args);
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exitCode = 1;
+    }
+  };
+}
+
 const program = new Command();
 
 program
@@ -60,24 +91,28 @@ program
   .description("Generate a new ML-DSA-65 signing keypair")
   .option("-o, --out <path>", "path to write the key file", DEFAULT_KEY_PATH)
   .option("-f, --force", "overwrite an existing key file", false)
-  .action((opts: { out: string; force: boolean }) => {
-    const keyFile = toKeyFile(generateKeyPair());
-    if (writeKeyFileSafely(opts.out, JSON.stringify(keyFile, null, 2) + "\n", opts.force)) {
-      console.log(`wrote ${keyFile.algorithm} key ${keyFile.keyId} to ${opts.out}`);
-    }
-  });
+  .action(
+    action((opts: { out: string; force: boolean }) => {
+      const keyFile = toKeyFile(generateKeyPair());
+      if (writeKeyFileSafely(opts.out, JSON.stringify(keyFile, null, 2) + "\n", opts.force)) {
+        console.log(`wrote ${keyFile.algorithm} key ${keyFile.keyId} to ${opts.out}`);
+      }
+    }),
+  );
 
 program
   .command("kem-keygen")
   .description("Generate a new ML-KEM-768 key-encapsulation keypair")
   .option("-o, --out <path>", "path to write the key file", DEFAULT_KEM_KEY_PATH)
   .option("-f, --force", "overwrite an existing key file", false)
-  .action((opts: { out: string; force: boolean }) => {
-    const keyFile = toKemKeyFile(generateKemKeyPair());
-    if (writeKeyFileSafely(opts.out, JSON.stringify(keyFile, null, 2) + "\n", opts.force)) {
-      console.log(`wrote ${keyFile.algorithm} key ${keyFile.keyId} to ${opts.out}`);
-    }
-  });
+  .action(
+    action((opts: { out: string; force: boolean }) => {
+      const keyFile = toKemKeyFile(generateKemKeyPair());
+      if (writeKeyFileSafely(opts.out, JSON.stringify(keyFile, null, 2) + "\n", opts.force)) {
+        console.log(`wrote ${keyFile.algorithm} key ${keyFile.keyId} to ${opts.out}`);
+      }
+    }),
+  );
 
 program
   .command("sign")
@@ -85,15 +120,17 @@ program
   .argument("<file>", "path to the file to sign")
   .option("-k, --key <path>", "path to the signing key file", DEFAULT_KEY_PATH)
   .option("-o, --out <path>", "path to write the .sig.json file (default: <file>.sig.json)")
-  .action((file: string, opts: { key: string; out?: string }) => {
-    const keyFile = loadKeyFile(opts.key);
-    const pair = keyFileToPair(keyFile);
-    const message = readFileSync(file);
-    const sigFile = buildSignatureFile(pair, keyFile.keyId, message);
-    const outPath = opts.out ?? `${file}.sig.json`;
-    writeFileSync(outPath, JSON.stringify(sigFile, null, 2) + "\n");
-    console.log(`signed ${file} with key ${keyFile.keyId} -> ${outPath}`);
-  });
+  .action(
+    action((file: string, opts: { key: string; out?: string }) => {
+      const keyFile = loadKeyFile(opts.key);
+      const pair = keyFileToPair(keyFile);
+      const message = readInputFile(file);
+      const sigFile = buildSignatureFile(pair, keyFile.keyId, message);
+      const outPath = opts.out ?? `${file}.sig.json`;
+      writeFileSync(outPath, JSON.stringify(sigFile, null, 2) + "\n");
+      console.log(`signed ${file} with key ${keyFile.keyId} -> ${outPath}`);
+    }),
+  );
 
 program
   .command("verify")
@@ -101,24 +138,21 @@ program
   .argument("<file>", "path to the file that was signed")
   .option("-s, --sig <path>", "path to the .sig.json file (default: <file>.sig.json)")
   .option("-k, --key <path>", "path to the signing key file (for the public key)", DEFAULT_KEY_PATH)
-  .action((file: string, opts: { sig?: string; key: string }) => {
-    const keyFile = loadKeyFile(opts.key);
-    const sigPath = opts.sig ?? `${file}.sig.json`;
-    if (!existsSync(sigPath)) {
-      console.error(`no signature found at ${sigPath}`);
-      process.exitCode = 1;
-      return;
-    }
-    const sigFile = JSON.parse(readFileSync(sigPath, "utf8")) as SignatureFile;
-    const message = readFileSync(file);
-    const result = verifySignatureFile(keyFileToPair(keyFile).publicKey, keyFile.keyId, message, sigFile);
-    if (result.ok) {
-      console.log(`OK: ${file} matches signature from key ${keyFile.keyId}`);
-    } else {
-      console.error(`FAILED: ${result.reason}`);
-      process.exitCode = 1;
-    }
-  });
+  .action(
+    action((file: string, opts: { sig?: string; key: string }) => {
+      const keyFile = loadKeyFile(opts.key);
+      const sigPath = opts.sig ?? `${file}.sig.json`;
+      const sigFile = readJsonFile<SignatureFile>(sigPath, "signature file");
+      const message = readInputFile(file);
+      const result = verifySignatureFile(keyFileToPair(keyFile).publicKey, keyFile.keyId, message, sigFile);
+      if (result.ok) {
+        console.log(`OK: ${file} matches signature from key ${keyFile.keyId}`);
+      } else {
+        console.error(`FAILED: ${result.reason}`);
+        process.exitCode = 1;
+      }
+    }),
+  );
 
 program
   .command("encrypt")
@@ -126,14 +160,16 @@ program
   .argument("<file>", "path to the file to encrypt")
   .option("-k, --key <path>", "path to the recipient's KEM key file (public key)", DEFAULT_KEM_KEY_PATH)
   .option("-o, --out <path>", "path to write the .enc.json file (default: <file>.enc.json)")
-  .action((file: string, opts: { key: string; out?: string }) => {
-    const recipient = loadKemKeyFile(opts.key);
-    const plaintext = readFileSync(file);
-    const encrypted = encryptForRecipient(kemKeyFileToPair(recipient).publicKey, recipient.keyId, plaintext);
-    const outPath = opts.out ?? `${file}.enc.json`;
-    writeFileSync(outPath, JSON.stringify(encrypted, null, 2) + "\n");
-    console.log(`encrypted ${file} for key ${recipient.keyId} -> ${outPath}`);
-  });
+  .action(
+    action((file: string, opts: { key: string; out?: string }) => {
+      const recipient = loadKemKeyFile(opts.key);
+      const plaintext = readInputFile(file);
+      const encrypted = encryptForRecipient(kemKeyFileToPair(recipient).publicKey, recipient.keyId, plaintext);
+      const outPath = opts.out ?? `${file}.enc.json`;
+      writeFileSync(outPath, JSON.stringify(encrypted, null, 2) + "\n");
+      console.log(`encrypted ${file} for key ${recipient.keyId} -> ${outPath}`);
+    }),
+  );
 
 program
   .command("decrypt")
@@ -141,23 +177,25 @@ program
   .argument("<file>", "path to the .enc.json file to decrypt")
   .option("-k, --key <path>", "path to your KEM key file (secret key)", DEFAULT_KEM_KEY_PATH)
   .option("-o, --out <path>", "path to write the decrypted plaintext (default: <file> with .enc.json stripped)")
-  .action((file: string, opts: { key: string; out?: string }) => {
-    const own = loadKemKeyFile(opts.key);
-    const encrypted = JSON.parse(readFileSync(file, "utf8")) as EncryptedFile;
-    const result = decryptWithKey(kemKeyFileToPair(own), own.keyId, encrypted);
-    if (!result.ok) {
-      console.error(`FAILED: ${result.reason}`);
-      process.exitCode = 1;
-      return;
-    }
-    const outPath = opts.out ?? file.replace(/\.enc\.json$/, "");
-    if (outPath === file) {
-      console.error(`refusing to write decrypted output over the input file; pass -o <path>`);
-      process.exitCode = 1;
-      return;
-    }
-    writeFileSync(outPath, result.plaintext);
-    console.log(`decrypted ${file} -> ${outPath}`);
-  });
+  .action(
+    action((file: string, opts: { key: string; out?: string }) => {
+      const own = loadKemKeyFile(opts.key);
+      const encrypted = readJsonFile<EncryptedFile>(file, "encrypted file");
+      const result = decryptWithKey(kemKeyFileToPair(own), own.keyId, encrypted);
+      if (!result.ok) {
+        console.error(`FAILED: ${result.reason}`);
+        process.exitCode = 1;
+        return;
+      }
+      const outPath = opts.out ?? file.replace(/\.enc\.json$/, "");
+      if (outPath === file) {
+        console.error(`refusing to write decrypted output over the input file; pass -o <path>`);
+        process.exitCode = 1;
+        return;
+      }
+      writeFileSync(outPath, result.plaintext);
+      console.log(`decrypted ${file} -> ${outPath}`);
+    }),
+  );
 
 program.parse();

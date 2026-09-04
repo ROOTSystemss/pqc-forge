@@ -2,6 +2,19 @@
   "name": "pqc-forge",
   "version": "0.1.0",
   "description": "Post-quantum signing (ML-DSA) and encryption (ML-KEM) CLI and library",
+  "keywords": [
+    "post-quantum",
+    "pqc",
+    "ml-dsa",
+    "ml-kem",
+    "dilithium",
+    "kyber",
+    "cli",
+    "signing",
+    "encryption"
+  ],
+  "license": "MIT",
+  "author": "saiteja799",
   "type": "module",
   "bin": {
     "pqc-forge": "./dist/cli.js"
@@ -9,7 +22,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.test.*"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
