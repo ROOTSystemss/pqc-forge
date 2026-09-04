@@ -10,6 +10,7 @@ import { dockerStatus, PROTOCOL_CASES, runDockerProtocolLab } from './protocol-l
 import { renderProtocolLabHtml } from './protocol-lab/report.js';
 import { compareScans } from './baseline.js';
 import { scanToSarif } from './sarif.js';
+import { scanToCbom } from './cbom.js';
 import { rollbackMigration } from './rollback.js';
 import { createPrPack } from './pr-pack.js';
 import { validateCorpus } from './validation.js';
@@ -20,7 +21,7 @@ import { generateSigningKey, loadSigningKey, publicKeyDocument } from './signing
 const HELP = `PQC Forge — repository-to-patch migration evidence
 
 Usage:
-  pqc-forge scan <path> [--json] [--report file] [--sarif file] [--baseline scan.json] [--ignore file|--no-ignore]
+  pqc-forge scan <path> [--json] [--report file] [--sarif file] [--cbom file] [--baseline scan.json] [--ignore file|--no-ignore]
   pqc-forge migrate <path> [--write --accept-runtime-requirement] [--out directory] [--signing-key file] [--json]
   pqc-forge rollback <migration-receipt.json> [--write] [--json]
   pqc-forge pr-pack <repository> --out directory [--protocol-receipt file] [--runtime-receipt file] [--signing-key file] [--json]
@@ -183,6 +184,14 @@ export async function run(args) {
       await fs.mkdir(path.dirname(resolvedSarif), { recursive: true });
       await fs.writeFile(resolvedSarif, `${JSON.stringify(scanToSarif(report), null, 2)}\n`, 'utf8');
       if (!json) console.log(`SARIF written to ${resolvedSarif}`);
+    }
+    const cbomPath = optionValue(args, '--cbom', null);
+    if (args.includes('--cbom') && !cbomPath) throw new Error('--cbom requires an output file.');
+    if (cbomPath) {
+      const resolvedCbom = path.resolve(cbomPath);
+      await fs.mkdir(path.dirname(resolvedCbom), { recursive: true });
+      await fs.writeFile(resolvedCbom, `${JSON.stringify(scanToCbom(report), null, 2)}\n`, 'utf8');
+      if (!json) console.log(`CycloneDX CBOM written to ${resolvedCbom}`);
     }
     const reportPath = optionValue(args, '--report', null);
     if (args.includes('--report') && !reportPath) throw new Error('--report requires an output file.');
