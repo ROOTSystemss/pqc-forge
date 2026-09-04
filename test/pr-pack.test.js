@@ -7,8 +7,10 @@ import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { createPrPack } from '../src/pr-pack.js';
 import { createProtocolReceipt, verifyReceipt } from '../src/breaklab/receipt.js';
+import { generateSigningKey } from '../src/signing.js';
 
 const execute = promisify(execFile);
+const key = generateSigningKey();
 
 test('PR pack is non-destructive, verifiable, and produces an apply-ready patch', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-pr-pack-'));
@@ -21,10 +23,11 @@ test('PR pack is non-destructive, verifiable, and produces an apply-ready patch'
   const protocolReceiptPath = path.join(base, 'protocol-receipt.json');
   const protocolReceipt = createProtocolReceipt(
     { schema: 'pqc-forge.protocol-lab-run/v1', verdict: { pass: true }, cases: [] },
-    { schema: 'pqc-forge.protocol-matrix/v1', cases: [] }
+    { schema: 'pqc-forge.protocol-matrix/v1', cases: [] },
+    key
   );
   await fs.writeFile(protocolReceiptPath, JSON.stringify(protocolReceipt));
-  const result = await createPrPack(repository, output, { protocolReceiptPath });
+  const result = await createPrPack(repository, output, { protocolReceiptPath, signingKey: key });
   assert.equal(result.summary.changeCount, 2);
   assert.equal(result.summary.resolvedFindings >= 2, true);
   assert.equal(await fs.readFile(path.join(repository, 'nginx.conf'), 'utf8'), original);
@@ -44,7 +47,7 @@ test('PR pack is non-destructive, verifiable, and produces an apply-ready patch'
   assert.match(await fs.readFile(path.join(applyRoot, 'nginx.conf'), 'utf8'), /X25519MLKEM768:X25519/);
   await execute('git', ['apply', '--reverse', path.join(output, 'migration.patch')], { cwd: applyRoot });
   assert.equal(await fs.readFile(path.join(applyRoot, 'nginx.conf'), 'utf8'), original);
-  await assert.rejects(() => createPrPack(repository, output, { protocolReceiptPath }), /Refusing to overwrite/);
+  await assert.rejects(() => createPrPack(repository, output, { protocolReceiptPath, signingKey: key }), /Refusing to overwrite/);
 });
 
 test('PR pack preserves a trailing blank context line in a patch hunk', async () => {
@@ -53,7 +56,7 @@ test('PR pack preserves a trailing blank context line in a patch hunk', async ()
   const output = path.join(base, 'output');
   await fs.mkdir(repository);
   await fs.writeFile(path.join(repository, 'nginx.conf'), 'server {\n  ssl_protocols TLSv1.2;\n  ssl_ecdh_curve secp384r1;\n\n}\n');
-  await createPrPack(repository, output);
+  await createPrPack(repository, output, { signingKey: key });
   await execute('git', ['init', '--quiet'], { cwd: repository });
   await execute('git', ['-c', 'core.autocrlf=false', 'apply', '--check', path.join(output, 'migration.patch')], { cwd: repository });
 });
@@ -64,7 +67,7 @@ test('PR pack turns a missing HAProxy group policy into resolved evidence', asyn
   const output = path.join(base, 'output');
   await fs.mkdir(repository);
   await fs.writeFile(path.join(repository, 'haproxy.cfg'), 'global\n  daemon\nfrontend https\n  bind *:443 ssl crt /cert.pem\n');
-  const result = await createPrPack(repository, output);
+  const result = await createPrPack(repository, output, { signingKey: key });
   assert.equal(result.summary.changeCount, 1);
   assert.equal(result.summary.resolvedFindings >= 1, true);
   assert.match(await fs.readFile(path.join(output, 'migration.patch'), 'utf8'), /ssl-default-bind-curves X25519MLKEM768/);

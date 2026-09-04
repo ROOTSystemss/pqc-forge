@@ -4,7 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { createRuntimeReceipt, createTlsReceipt, verifyReceipt } from '../src/breaklab/receipt.js';
+import { generateSigningKey } from '../src/signing.js';
 import { evaluateStagingGate, writeStagingEvidence } from '../src/staging-gate.js';
+
+const key = generateSigningKey();
 
 function manifest(overrides = {}) {
   return {
@@ -36,11 +39,11 @@ function manifest(overrides = {}) {
 
 function receipts() {
   return {
-    runtimeReceipts: [createRuntimeReceipt({ verdict: { pass: true }, target: 'isolated-staging-us-1' })],
+    runtimeReceipts: [createRuntimeReceipt({ verdict: { pass: true }, target: 'isolated-staging-us-1' }, key)],
     endpointReceipts: [createTlsReceipt({
       target: 'staging.example.test:443', authorized: true,
       verdict: { pqKeyExchange: true, pqAuthentication: false, status: 'pq-confidentiality-observed' }
-    })]
+    }, key)]
   };
 }
 
@@ -55,7 +58,7 @@ async function fixture(customManifest = manifest()) {
 
 test('staging gate passes only to an authorized canary and creates verifiable evidence', async () => {
   const { root } = await fixture();
-  const result = await writeStagingEvidence(path.join(root, 'manifest.json'), path.join(root, 'output'));
+  const result = await writeStagingEvidence(path.join(root, 'manifest.json'), path.join(root, 'output'), { signingKey: key });
   assert.equal(result.run.verdict.pass, true);
   assert.equal(result.run.verdict.status, 'ready-for-authorized-canary');
   assert.equal(result.run.verdict.productionDeploymentAuthorized, false);
@@ -92,7 +95,7 @@ test('staging gate rejects a tampered input receipt before producing evidence', 
   receipt.probe.verdict.pass = false;
   await fs.writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
   await assert.rejects(
-    () => writeStagingEvidence(path.join(root, 'manifest.json'), path.join(root, 'output')),
+    () => writeStagingEvidence(path.join(root, 'manifest.json'), path.join(root, 'output'), { signingKey: key }),
     /failed digest verification/
   );
   await assert.rejects(() => fs.access(path.join(root, 'output')));
@@ -103,5 +106,5 @@ test('staging gate refuses to overwrite an existing evidence directory', async (
   const output = path.join(root, 'output');
   await fs.mkdir(output);
   await fs.writeFile(path.join(output, 'keep.txt'), 'user evidence');
-  await assert.rejects(() => writeStagingEvidence(path.join(root, 'manifest.json'), output), /Refusing to overwrite/);
+  await assert.rejects(() => writeStagingEvidence(path.join(root, 'manifest.json'), output, { signingKey: key }), /Refusing to overwrite/);
 });

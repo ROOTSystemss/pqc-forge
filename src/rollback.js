@@ -18,7 +18,8 @@ export async function rollbackMigration(receipt, { write = false } = {}) {
   if (receipt?.schema !== 'pqc-forge.migration-receipt/v1') {
     throw new Error('Rollback requires a PQC Forge migration-receipt/v1 document.');
   }
-  if (!verifyReceipt(receipt).valid) throw new Error('Refusing rollback: migration receipt digest is invalid.');
+  const verification = verifyReceipt(receipt);
+  if (!verification.valid) throw new Error(`Refusing rollback: migration receipt failed verification (${verification.errors.join(', ')}).`);
   if (receipt.migration.mode !== 'applied') throw new Error('Refusing rollback: receipt describes a dry-run, not applied changes.');
   const root = path.resolve(receipt.migration.root);
   const pending = [];

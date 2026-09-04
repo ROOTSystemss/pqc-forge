@@ -15,22 +15,24 @@ import { createPrPack } from './pr-pack.js';
 import { validateCorpus } from './validation.js';
 import { createContainerRunner, writeRuntimeEvidence } from './runtime-probe.js';
 import { writeStagingEvidence } from './staging-gate.js';
+import { generateSigningKey, loadSigningKey, publicKeyDocument } from './signing.js';
 
 const HELP = `PQC Forge — repository-to-patch migration evidence
 
 Usage:
   pqc-forge scan <path> [--json] [--report file] [--sarif file] [--baseline scan.json] [--ignore file|--no-ignore]
-  pqc-forge migrate <path> [--write --accept-runtime-requirement] [--out directory] [--json]
+  pqc-forge migrate <path> [--write --accept-runtime-requirement] [--out directory] [--signing-key file] [--json]
   pqc-forge rollback <migration-receipt.json> [--write] [--json]
-  pqc-forge pr-pack <repository> --out directory [--protocol-receipt file] [--runtime-receipt file] [--json]
-  pqc-forge runtime-probe <nginx|haproxy|apache> --config file --out directory [--openssl executable] [--server-executable executable] [--container name --container-config path] [--docker executable] [--target name] [--json]
-  pqc-forge staging-gate <manifest.json> --out directory [--json]
-  pqc-forge validate-corpus <manifest.json> --out directory [--json]
-  pqc-forge verify <host[:port]> [--insecure] [--out directory] [--json]
-  pqc-forge breaklab <scenario.json> [--budget 64] [--seed 42] [--out directory] [--no-fail] [--json]
-  pqc-forge protocol-lab [--out directory] [--no-fail] [--json]
+  pqc-forge pr-pack <repository> --out directory [--protocol-receipt file] [--runtime-receipt file] [--signing-key file] [--json]
+  pqc-forge runtime-probe <nginx|haproxy|apache> --config file --out directory [--openssl executable] [--server-executable executable] [--container name --container-config path] [--docker executable] [--target name] [--signing-key file] [--json]
+  pqc-forge staging-gate <manifest.json> --out directory [--signing-key file] [--json]
+  pqc-forge validate-corpus <manifest.json> --out directory [--signing-key file] [--json]
+  pqc-forge verify <host[:port]> [--insecure] [--out directory] [--signing-key file] [--json]
+  pqc-forge breaklab <scenario.json> [--budget 64] [--seed 42] [--out directory] [--signing-key file] [--no-fail] [--json]
+  pqc-forge protocol-lab [--out directory] [--signing-key file] [--no-fail] [--json]
   pqc-forge doctor [--json]
-  pqc-forge verify-receipt <receipt.json> [--json]
+  pqc-forge keygen --out <directory> [--json]
+  pqc-forge verify-receipt <receipt.json> [--trusted-key file]... [--json]
 
 Commands:
   scan      Find quantum-vulnerable crypto with file/line evidence.
@@ -44,7 +46,19 @@ Commands:
   breaklab  Search a migration compatibility matrix and minimize failures.
   protocol-lab  Execute real OpenSSL 3.5/Nginx TLS handshakes in Docker.
   doctor    Check Docker, Compose, and engine readiness with corrective guidance.
-  verify-receipt  Detect changes to any PQC Forge evidence receipt.
+  keygen    Generate an ML-DSA-65 signing identity for evidence receipts.
+  verify-receipt  Verify a PQC Forge receipt's SHA-256 digest and ML-DSA signature.
+
+Signing:
+  Every receipt PQC Forge writes is ML-DSA-65 signed as well as SHA-256
+  digested; a receipt with a missing or invalid signature is never valid.
+  --signing-key selects an identity file created by \`keygen\`. Without it,
+  PQC_FORGE_SIGNING_KEY is used if set, and otherwise an identity is
+  auto-provisioned once at PQC_FORGE_HOME (or ~/.pqc-forge) and reused after
+  that. Auto-provisioning keeps the CLI zero-setup for local use; pass an
+  explicit --signing-key wherever an organization-managed identity matters.
+  \`verify-receipt --trusted-key <public-key-file>\` (repeatable) additionally
+  requires the receipt's signer to be one of the named public keys.
 `;
 
 function optionValue(args, name, fallback) {
@@ -109,9 +123,38 @@ export async function run(args) {
     console.log(HELP);
     return;
   }
-  if (!target && !['protocol-lab', 'doctor'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
+  if (!target && !['protocol-lab', 'doctor', 'keygen'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
 
   const json = args.includes('--json');
+  const signingKeyOption = optionValue(args, '--signing-key', null);
+  const resolveSigningKey = async () => (await loadSigningKey(signingKeyOption)).key;
+
+  if (command === 'keygen') {
+    const outValue = optionValue(args, '--out', null);
+    if (!outValue) throw new Error('keygen requires --out <directory>.');
+    const outputDirectory = path.resolve(outValue);
+    await fs.mkdir(outputDirectory, { recursive: true });
+    const keyPath = path.join(outputDirectory, 'signing-key.json');
+    try {
+      await fs.access(keyPath);
+      throw new Error(`Refusing to overwrite an existing signing key: ${keyPath}`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    const key = generateSigningKey();
+    await fs.writeFile(keyPath, `${JSON.stringify(key, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    try { await fs.chmod(keyPath, 0o600); } catch { /* best-effort outside POSIX filesystems */ }
+    const publicPath = path.join(outputDirectory, 'signing-key.pub.json');
+    await fs.writeFile(publicPath, `${JSON.stringify(publicKeyDocument(key), null, 2)}\n`, 'utf8');
+    if (json) console.log(JSON.stringify({ keyId: key.keyId, algorithm: key.algorithm, keyPath, publicPath }, null, 2));
+    else {
+      console.log(`Generated ${key.algorithm} signing key ${key.keyId}`);
+      console.log(`Secret key (keep private): ${keyPath}`);
+      console.log(`Public key (safe to distribute as a trust root): ${publicPath}`);
+      console.log('Set PQC_FORGE_SIGNING_KEY to this secret key path, or pass --signing-key, to sign receipts with it.');
+    }
+    return;
+  }
   if (command === 'doctor') {
     const status = await dockerStatus();
     if (json) console.log(JSON.stringify(status, null, 2));
@@ -164,7 +207,7 @@ export async function run(args) {
     if (args.includes('--out') && !outValue) throw new Error('--out requires an output directory.');
     if (outValue) {
       const outputDirectory = path.resolve(outValue);
-      const receipt = createMigrationReceipt(report);
+      const receipt = createMigrationReceipt(report, await resolveSigningKey());
       await fs.mkdir(outputDirectory, { recursive: true });
       await fs.writeFile(path.join(outputDirectory, 'migration-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
       if (!json) console.log(`Migration receipt written to ${outputDirectory}`);
@@ -190,7 +233,7 @@ export async function run(args) {
     if (args.includes('--protocol-receipt') && !protocolReceiptPath) throw new Error('--protocol-receipt requires a file.');
     const runtimeReceiptPaths = optionValues(args, '--runtime-receipt');
     if (args.includes('--runtime-receipt') && runtimeReceiptPaths.length === 0) throw new Error('--runtime-receipt requires a file.');
-    const result = await createPrPack(target, outValue, { protocolReceiptPath, runtimeReceiptPaths });
+    const result = await createPrPack(target, outValue, { protocolReceiptPath, runtimeReceiptPaths, signingKey: await resolveSigningKey() });
     if (json) console.log(JSON.stringify(result, null, 2));
     else {
       console.log(`PR pack created with ${result.summary.changeCount} change(s) and ${result.summary.resolvedFindings} resolved finding(s).`);
@@ -214,7 +257,8 @@ export async function run(args) {
       serverExecutable: optionValue(args, '--server-executable', undefined),
       target: optionValue(args, '--target', 'local-staging-environment'),
       executionConfigPath: containerConfig ?? undefined,
-      runner: container ? createContainerRunner(container, { dockerExecutable: optionValue(args, '--docker', 'docker') }) : undefined
+      runner: container ? createContainerRunner(container, { dockerExecutable: optionValue(args, '--docker', 'docker') }) : undefined,
+      signingKey: await resolveSigningKey()
     });
     if (json) console.log(JSON.stringify(result.probe, null, 2));
     else {
@@ -229,7 +273,7 @@ export async function run(args) {
   if (command === 'staging-gate') {
     const outValue = optionValue(args, '--out', null);
     if (!outValue) throw new Error('staging-gate requires --out <directory>.');
-    const result = await writeStagingEvidence(target, outValue);
+    const result = await writeStagingEvidence(target, outValue, { signingKey: await resolveSigningKey() });
     if (json) console.log(JSON.stringify(result.run, null, 2));
     else {
       console.log(`Staging acceptance: ${result.run.verdict.status.toUpperCase()}.`);
@@ -244,7 +288,7 @@ export async function run(args) {
   if (command === 'validate-corpus') {
     const outValue = optionValue(args, '--out', null);
     if (!outValue) throw new Error('validate-corpus requires --out <directory>.');
-    const result = await validateCorpus(target, outValue);
+    const result = await validateCorpus(target, outValue, { signingKey: await resolveSigningKey() });
     if (json) console.log(JSON.stringify(result, null, 2));
     else {
       console.log(`Public corpus: PASS (${result.run.totalCases}/${result.run.totalCases} cases).`);
@@ -265,7 +309,7 @@ export async function run(args) {
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
       }
-      const receipt = createTlsReceipt(evidence);
+      const receipt = createTlsReceipt(evidence, await resolveSigningKey());
       await fs.mkdir(output, { recursive: true });
       await fs.writeFile(path.join(output, 'tls-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
       if (!json) {
@@ -285,7 +329,7 @@ export async function run(args) {
     if (!Number.isInteger(budget) || budget < 1) throw new Error('--budget must be a positive integer.');
     if (!Number.isInteger(seed)) throw new Error('--seed must be an integer.');
     const runReport = runBreakLab(scenario, { budget, seed });
-    const receipt = createReceipt(runReport, scenario);
+    const receipt = createReceipt(runReport, scenario, await resolveSigningKey());
     const outValue = optionValue(args, '--out', null);
     let outputDirectory = null;
     if (outValue) {
@@ -300,7 +344,7 @@ export async function run(args) {
   }
   if (command === 'protocol-lab') {
     const runReport = await runDockerProtocolLab();
-    const receipt = createProtocolReceipt(runReport, { schema: 'pqc-forge.protocol-matrix/v1', cases: PROTOCOL_CASES });
+    const receipt = createProtocolReceipt(runReport, { schema: 'pqc-forge.protocol-matrix/v1', cases: PROTOCOL_CASES }, await resolveSigningKey());
     const outValue = optionValue(args, '--out', null);
     let outputDirectory = null;
     if (outValue) {
@@ -321,8 +365,19 @@ export async function run(args) {
   }
   if (command === 'verify-receipt') {
     const receipt = JSON.parse(await fs.readFile(path.resolve(target), 'utf8'));
-    const verification = verifyReceipt(receipt);
-    json ? console.log(JSON.stringify(verification, null, 2)) : console.log(verification.valid ? 'Receipt is valid.' : `Receipt is invalid.\nExpected: ${verification.expected}\nActual:   ${verification.actual}`);
+    const trustedKeyPaths = optionValues(args, '--trusted-key');
+    if (args.includes('--trusted-key') && trustedKeyPaths.length === 0) throw new Error('--trusted-key requires a public-key file.');
+    const trustedPublicKeys = trustedKeyPaths.length
+      ? await Promise.all(trustedKeyPaths.map(async (keyPath) => {
+          const doc = JSON.parse(await fs.readFile(path.resolve(keyPath), 'utf8'));
+          if (doc.schema !== 'pqc-forge.signing-public-key/v1' && doc.schema !== 'pqc-forge.signing-key/v1') throw new Error(`${keyPath} is not a PQC Forge signing key or public-key document.`);
+          return doc.publicKey;
+        }))
+      : null;
+    const verification = verifyReceipt(receipt, { trustedPublicKeys });
+    if (json) console.log(JSON.stringify(verification, null, 2));
+    else if (verification.valid) console.log(`Receipt is valid. Signed by ${verification.keyId}.`);
+    else console.log(`Receipt is invalid: ${verification.errors.join(', ')}.\nExpected digest: ${verification.expected}\nActual digest:   ${verification.actual}`);
     process.exitCode = verification.valid ? 0 : 5;
     return;
   }

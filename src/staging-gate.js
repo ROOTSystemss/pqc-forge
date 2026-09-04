@@ -100,7 +100,8 @@ function reportMarkdown(receipt) {
   return `# PQC Forge staging acceptance\n\nTarget: **${receipt.run.target}**\n\nVerdict: **${receipt.run.verdict.status.toUpperCase()}**\n\nProduction deployment authorized: **NO**\n\n| Check | Result | Observed | Requirement |\n|---|---|---:|---|\n${rows}\n\nA passing result permits only the explicitly approved canary. Expansion still requires a human review of live canary telemetry.\n\nReceipt: \`${receipt.receiptDigest}\`\n`;
 }
 
-export async function writeStagingEvidence(manifestPath, outputDirectory) {
+export async function writeStagingEvidence(manifestPath, outputDirectory, { signingKey = null } = {}) {
+  if (!signingKey) throw new Error('writeStagingEvidence requires a signingKey (see loadSigningKey in src/signing.js or `pqc-forge keygen`).');
   const resolvedManifest = path.resolve(manifestPath);
   const manifestDirectory = path.dirname(resolvedManifest);
   const manifest = JSON.parse(await fs.readFile(resolvedManifest, 'utf8'));
@@ -114,7 +115,7 @@ export async function writeStagingEvidence(manifestPath, outputDirectory) {
   const runtimeReceipts = await Promise.all((manifest.runtimeReceipts ?? []).map((reference) => loadReceipt(manifestDirectory, reference, 'pqc-forge.runtime-receipt/v1')));
   const endpointReceipts = await Promise.all((manifest.endpointReceipts ?? []).map((reference) => loadReceipt(manifestDirectory, reference, 'pqc-forge.tls-receipt/v1')));
   const run = evaluateStagingGate(manifest, { runtimeReceipts, endpointReceipts });
-  const receipt = createStagingReceipt(run);
+  const receipt = createStagingReceipt(run, signingKey);
   await fs.mkdir(output, { recursive: true });
   await fs.writeFile(path.join(output, 'staging-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(output, 'STAGING_REPORT.md'), reportMarkdown(receipt), 'utf8');

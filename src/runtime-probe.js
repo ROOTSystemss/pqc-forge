@@ -112,10 +112,11 @@ export async function probeRuntime(server, options = {}) {
 }
 
 export async function writeRuntimeEvidence(server, outputPath, options = {}) {
+  if (!options.signingKey) throw new Error('writeRuntimeEvidence requires options.signingKey (see loadSigningKey in src/signing.js or `pqc-forge keygen`).');
   const output = path.resolve(outputPath);
   await assertEmptyOutput(output);
   const probe = await probeRuntime(server, options);
-  const receipt = createRuntimeReceipt(probe);
+  const receipt = createRuntimeReceipt(probe, options.signingKey);
   await fs.mkdir(output, { recursive: true });
   await fs.writeFile(path.join(output, 'runtime-probe.json'), `${JSON.stringify(probe, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(output, 'runtime-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');

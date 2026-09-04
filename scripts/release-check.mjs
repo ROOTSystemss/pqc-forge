@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createPrPack } from '../src/pr-pack.js';
 import { validateCorpus, verifyPackArtifacts } from '../src/validation.js';
 import { createReleaseReceipt, verifyReceipt } from '../src/breaklab/receipt.js';
+import { loadSigningKey } from '../src/signing.js';
 import { VERSION } from '../src/version.js';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,6 +21,8 @@ const output = path.resolve(project, value('--out', `release-output/release-${VE
 const skipPublic = args.includes('--skip-public');
 const npmCli = process.env.npm_execpath;
 const steps = [];
+const { key: signingKey, path: signingKeyPath, autoProvisioned } = await loadSigningKey(value('--signing-key', undefined));
+process.stdout.write(`[release] Signing evidence with ${signingKey.algorithm} key ${signingKey.keyId} (${autoProvisioned ? `auto-provisioned at ${signingKeyPath}` : signingKeyPath})\n`);
 
 function execute(command, commandArgs, options = {}) {
   return new Promise((resolve, reject) => {
@@ -68,7 +71,7 @@ function markdown(receipt) {
 
 async function finish(pass, error = null) {
   const run = { schema: 'pqc-forge.release-run/v1', version: VERSION, verdict: { pass }, platform: process.platform, node: process.version, steps, error };
-  const receipt = createReleaseReceipt(run);
+  const receipt = createReleaseReceipt(run, signingKey);
   await fs.writeFile(path.join(output, 'release-report.json'), `${JSON.stringify(run, null, 2)}\n`);
   await fs.writeFile(path.join(output, 'release-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`);
   await fs.writeFile(path.join(output, 'RELEASE_REPORT.md'), markdown(receipt));
@@ -86,14 +89,14 @@ try {
     steps.push({ name: 'pinned-public-corpus', status: 'skipped', durationMs: 0, reason: '--skip-public' });
   } else {
     await step('pinned-public-corpus', async () => {
-      const result = await validateCorpus(path.join(project, 'validation', 'corpus.json'), path.join(output, 'public-validation'));
+      const result = await validateCorpus(path.join(project, 'validation', 'corpus.json'), path.join(output, 'public-validation'), { signingKey });
       return { cases: result.run.totalCases, receiptDigest: result.receiptDigest };
     });
   }
   await step('breaklab-evidence', async () => {
     const directory = path.join(output, 'breaklab');
     const scenario = JSON.parse(await fs.readFile(path.join(project, 'scenarios', 'tls-migration-demo.json'), 'utf8'));
-    await execute(process.execPath, ['./bin/pqc-forge.js', 'breaklab', './scenarios/tls-migration-demo.json', '--budget', '30', '--seed', '42', '--out', directory, '--no-fail']);
+    await execute(process.execPath, ['./bin/pqc-forge.js', 'breaklab', './scenarios/tls-migration-demo.json', '--budget', '30', '--seed', '42', '--out', directory, '--signing-key', signingKeyPath, '--no-fail']);
     const receipt = JSON.parse(await fs.readFile(path.join(directory, 'breaklab-receipt.json'), 'utf8'));
     if (!verifyReceipt(receipt).valid) throw new Error('BreakLab receipt verification failed.');
     const modes = new Set(receipt.run.strategies.flatMap((strategy) => strategy.uniqueFailureModes)).size;
@@ -113,7 +116,7 @@ try {
       if (error.code !== 'ENOENT') throw error;
     }
     const directory = path.join(output, 'pr-pack');
-    const result = await createPrPack(path.join(project, 'test', 'fixtures', 'vulnerable'), directory, { protocolReceiptPath });
+    const result = await createPrPack(path.join(project, 'test', 'fixtures', 'vulnerable'), directory, { protocolReceiptPath, signingKey });
     await verifyPackArtifacts(directory);
     return {
       receiptDigest: result.receiptDigest,

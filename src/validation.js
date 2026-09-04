@@ -102,7 +102,7 @@ function meets(actual, minimum, label, id) {
   if (minimum !== undefined && actual < minimum) throw new Error(`${id}: expected ${label} >= ${minimum}, received ${actual}`);
 }
 
-async function validateCase(item, root, fetchImpl) {
+async function validateCase(item, root, fetchImpl, signingKey) {
   const source = await download(item, fetchImpl);
   const repository = path.join(root, 'repository');
   const pack = path.join(root, 'pr-pack');
@@ -116,7 +116,7 @@ async function validateCase(item, root, fetchImpl) {
   let resolved = 0;
   let packDigest = null;
   if (item.expect?.pack) {
-    const result = await createPrPack(repository, pack);
+    const result = await createPrPack(repository, pack, { signingKey });
     resolved = result.summary.resolvedFindings;
     meets(resolved, item.expect.minResolved, 'resolved findings', item.id);
     await verifyPackArtifacts(pack);
@@ -153,7 +153,8 @@ function renderMarkdown(receipt) {
   return `# PQC Forge public-corpus validation\n\nVerdict: **${receipt.run.verdict.pass ? 'PASS' : 'FAIL'}**\n\n| Case | Findings | Changes | Resolved | Result |\n|---|---:|---:|---:|---|\n${rows}\n\nReceipt: \`${receipt.receiptDigest}\`\n`;
 }
 
-export async function validateCorpus(manifestPath, outputPath, { fetchImpl = globalThis.fetch } = {}) {
+export async function validateCorpus(manifestPath, outputPath, { fetchImpl = globalThis.fetch, signingKey = null } = {}) {
+  if (!signingKey) throw new Error('validateCorpus requires a signingKey (see loadSigningKey in src/signing.js or `pqc-forge keygen`).');
   const manifest = JSON.parse(await fs.readFile(path.resolve(manifestPath), 'utf8'));
   assertManifest(manifest);
   const output = path.resolve(outputPath);
@@ -161,9 +162,9 @@ export async function validateCorpus(manifestPath, outputPath, { fetchImpl = glo
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-corpus-'));
   try {
     const cases = [];
-    for (const item of manifest.cases) cases.push(await validateCase(item, path.join(temporary, item.id), fetchImpl));
+    for (const item of manifest.cases) cases.push(await validateCase(item, path.join(temporary, item.id), fetchImpl, signingKey));
     const run = { schema: 'pqc-forge.validation-run/v1', verdict: { pass: true }, totalCases: cases.length, cases };
-    const receipt = createValidationReceipt(manifest, run);
+    const receipt = createValidationReceipt(manifest, run, signingKey);
     await fs.mkdir(output, { recursive: true });
     await fs.writeFile(path.join(output, 'validation-report.json'), `${JSON.stringify(run, null, 2)}\n`, 'utf8');
     await fs.writeFile(path.join(output, 'validation-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');

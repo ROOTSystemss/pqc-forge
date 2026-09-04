@@ -69,7 +69,8 @@ function renderDeploymentSafety(summary) {
   return `# Deployment safety gate\n\nStatus: **BLOCKED — staging and canary validation required**\n\nRuntime evidence coverage: ${summary.runtimeCoveredFiles.length}/${summary.runtimeCoveredFiles.length + summary.runtimeUncoveredFiles.length} migrated configuration files.\n\nBefore production, an authorized operator must:\n\n1. Apply the patch in an isolated staging copy.\n2. Run \`pqc-forge runtime-probe\` against every patched server configuration in its target runtime.\n3. Verify a staging endpoint negotiates the intended group and detect classical fallback.\n4. Exercise supported modern, legacy, API, browser, and device clients.\n5. Run handshake load, latency, fragmentation, and soak tests.\n6. Deploy to a small canary with explicit failure and latency rollback thresholds.\n7. Verify rollback from the reviewed patch and retain monitoring during gradual rollout.\n\nReference-lab or runtime receipts do not replace client, traffic, canary, or production monitoring evidence.\n`;
 }
 
-export async function createPrPack(rootPath, outputPath, { protocolReceiptPath = null, runtimeReceiptPath = null, runtimeReceiptPaths = [] } = {}) {
+export async function createPrPack(rootPath, outputPath, { protocolReceiptPath = null, runtimeReceiptPath = null, runtimeReceiptPaths = [], signingKey = null } = {}) {
+  if (!signingKey) throw new Error('createPrPack requires a signingKey (see loadSigningKey in src/signing.js or `pqc-forge keygen`).');
   const root = path.resolve(rootPath);
   const output = path.resolve(outputPath);
   try {
@@ -86,7 +87,7 @@ export async function createPrPack(rootPath, outputPath, { protocolReceiptPath =
   const delta = compareScans(afterScan, beforeScan);
   afterScan.delta = delta;
   const migration = publicMigration(migrationWithContent);
-  const migrationReceipt = createMigrationReceipt(migration);
+  const migrationReceipt = createMigrationReceipt(migration, signingKey);
   const requestedRuntimeReceipts = [...runtimeReceiptPaths, ...(runtimeReceiptPath ? [runtimeReceiptPath] : [])];
   const runtimeEvidence = [];
   const coveredFiles = new Set();
@@ -142,7 +143,7 @@ export async function createPrPack(rootPath, outputPath, { protocolReceiptPath =
     files.set(name, `${JSON.stringify(receipt, null, 2)}\n`);
   });
   const artifactDigests = [...files].map(([file, content]) => ({ file, digest: digest(content), bytes: Buffer.byteLength(content) }));
-  const packReceipt = createPrPackReceipt(summary, artifactDigests);
+  const packReceipt = createPrPackReceipt(summary, artifactDigests, signingKey);
   files.set('pr-pack-receipt.json', `${JSON.stringify(packReceipt, null, 2)}\n`);
   await fs.mkdir(output, { recursive: true });
   for (const [file, content] of files) await fs.writeFile(path.join(output, file), content, 'utf8');

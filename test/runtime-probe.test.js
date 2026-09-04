@@ -7,7 +7,10 @@ import { createPrPack } from '../src/pr-pack.js';
 import { migrateRepository } from '../src/migrator.js';
 import { createContainerRunner, parseOpenSslVersion, probeRuntime, writeRuntimeEvidence } from '../src/runtime-probe.js';
 import { verifyReceipt } from '../src/breaklab/receipt.js';
+import { generateSigningKey } from '../src/signing.js';
 import { verifyPackArtifacts } from '../src/validation.js';
+
+const key = generateSigningKey();
 
 function successfulRunner(calls) {
   return async (executable, args) => {
@@ -75,7 +78,7 @@ test('runtime probe reports every failed safety condition without throwing away 
     if (executable === 'openssl') return { executable, args, code: 0, stdout: 'X25519', stderr: '', error: null, durationMs: 1 };
     return { executable, args, code: args.includes('-t') ? 1 : 0, stdout: '', stderr: args.includes('-t') ? 'syntax error' : '', error: null, durationMs: 1 };
   };
-  const result = await writeRuntimeEvidence('nginx', path.join(root, 'evidence'), { configPath: config, runner });
+  const result = await writeRuntimeEvidence('nginx', path.join(root, 'evidence'), { configPath: config, runner, signingKey: key });
   assert.equal(result.probe.verdict.pass, false);
   assert.deepEqual(result.probe.verdict.failures.sort(), ['configContainsHybridGroup', 'configSyntaxValid', 'hybridGroupAvailable', 'openSslVersion'].sort());
   assert.equal(verifyReceipt(result.receipt).valid, true);
@@ -90,8 +93,8 @@ test('PR pack binds only passing runtime evidence matching generated after-conte
   const migration = await migrateRepository(repository, { includeContent: true });
   const patched = path.join(root, 'patched-nginx.conf');
   await fs.writeFile(patched, migration.artifacts[0].afterContent);
-  const evidence = await writeRuntimeEvidence('nginx', path.join(root, 'runtime'), { configPath: patched, runner: successfulRunner([]) });
-  const result = await createPrPack(repository, path.join(root, 'pack'), { runtimeReceiptPath: path.join(root, 'runtime', 'runtime-receipt.json') });
+  const evidence = await writeRuntimeEvidence('nginx', path.join(root, 'runtime'), { configPath: patched, runner: successfulRunner([]), signingKey: key });
+  const result = await createPrPack(repository, path.join(root, 'pack'), { runtimeReceiptPath: path.join(root, 'runtime', 'runtime-receipt.json'), signingKey: key });
   assert.equal(result.summary.targetRuntimeEvidenceIncluded, true);
   assert.equal(result.summary.targetRuntimeEvidenceComplete, true);
   assert.deepEqual(result.summary.runtimeCoveredFiles, ['nginx.conf']);
@@ -100,9 +103,9 @@ test('PR pack binds only passing runtime evidence matching generated after-conte
 
   const unrelated = path.join(root, 'unrelated.conf');
   await fs.writeFile(unrelated, 'X25519MLKEM768 but not the generated configuration\n');
-  await writeRuntimeEvidence('nginx', path.join(root, 'unrelated-runtime'), { configPath: unrelated, runner: successfulRunner([]) });
+  await writeRuntimeEvidence('nginx', path.join(root, 'unrelated-runtime'), { configPath: unrelated, runner: successfulRunner([]), signingKey: key });
   await assert.rejects(
-    () => createPrPack(repository, path.join(root, 'bad-pack'), { runtimeReceiptPath: path.join(root, 'unrelated-runtime', 'runtime-receipt.json') }),
+    () => createPrPack(repository, path.join(root, 'bad-pack'), { runtimeReceiptPath: path.join(root, 'unrelated-runtime', 'runtime-receipt.json'), signingKey: key }),
     /does not match a generated post-migration artifact/
   );
   assert.equal(evidence.probe.verdict.pass, true);
@@ -121,14 +124,14 @@ test('PR pack reports partial and complete runtime coverage across multiple migr
     await fs.writeFile(patched, artifact.afterContent);
     const server = artifact.file === 'nginx.conf' ? 'nginx' : 'haproxy';
     const directory = path.join(root, `runtime-${server}`);
-    await writeRuntimeEvidence(server, directory, { configPath: patched, runner: successfulRunner([]) });
+    await writeRuntimeEvidence(server, directory, { configPath: patched, runner: successfulRunner([]), signingKey: key });
     receipts.push(path.join(directory, 'runtime-receipt.json'));
   }
-  const partial = await createPrPack(repository, path.join(root, 'partial-pack'), { runtimeReceiptPaths: [receipts[0]] });
+  const partial = await createPrPack(repository, path.join(root, 'partial-pack'), { runtimeReceiptPaths: [receipts[0]], signingKey: key });
   assert.equal(partial.summary.targetRuntimeEvidenceComplete, false);
   assert.equal(partial.summary.runtimeCoveredFiles.length, 1);
   assert.equal(partial.summary.runtimeUncoveredFiles.length, 1);
-  const complete = await createPrPack(repository, path.join(root, 'complete-pack'), { runtimeReceiptPaths: receipts });
+  const complete = await createPrPack(repository, path.join(root, 'complete-pack'), { runtimeReceiptPaths: receipts, signingKey: key });
   assert.equal(complete.summary.targetRuntimeEvidenceComplete, true);
   assert.equal(complete.files.includes('runtime-receipt-1.json'), true);
   assert.equal(complete.files.includes('runtime-receipt-2.json'), true);

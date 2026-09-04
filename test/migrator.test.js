@@ -5,7 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { migrateRepository } from '../src/migrator.js';
 import { createMigrationReceipt, verifyReceipt } from '../src/breaklab/receipt.js';
+import { generateSigningKey } from '../src/signing.js';
 import { rollbackMigration } from '../src/rollback.js';
+
+const key = generateSigningKey();
 
 test('migrator proposes and applies a hybrid TLS group with backup', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-'));
@@ -18,7 +21,7 @@ test('migrator proposes and applies a hybrid TLS group with backup', async () =>
   assert.equal(dryRun.artifacts.length, 1);
   assert.match(dryRun.artifacts[0].beforeDigest, /^sha256:[a-f0-9]{64}$/);
   assert.notEqual(dryRun.artifacts[0].beforeDigest, dryRun.artifacts[0].afterDigest);
-  assert.equal(verifyReceipt(createMigrationReceipt(dryRun)).valid, true);
+  assert.equal(verifyReceipt(createMigrationReceipt(dryRun, key)).valid, true);
   assert.match(await fs.readFile(config, 'utf8'), /ssl_ecdh_curve X25519;/);
 
   await assert.rejects(() => migrateRepository(root, { write: true }), /Refusing to write/);
@@ -31,7 +34,7 @@ test('migrator proposes and applies a hybrid TLS group with backup', async () =>
   const idempotent = await migrateRepository(root);
   assert.equal(idempotent.changeCount, 0);
 
-  const appliedReceipt = createMigrationReceipt(applied);
+  const appliedReceipt = createMigrationReceipt(applied, key);
   const rollbackPlan = await rollbackMigration(appliedReceipt);
   assert.equal(rollbackPlan.mode, 'dry-run');
   assert.match(await fs.readFile(config, 'utf8'), /X25519MLKEM768/);
@@ -80,7 +83,7 @@ test('migrator updates HAProxy bind/server policies, legacy TLS, comments, and C
   assert.match(migrated, /ssl-min-ver TLSv1\.2/);
   assert.equal(migrated.includes('\r\n'), true);
   assert.equal((await migrateRepository(root)).changeCount, 0);
-  const receipt = createMigrationReceipt(applied);
+  const receipt = createMigrationReceipt(applied, key);
   await rollbackMigration(receipt, { write: true });
   assert.equal(await fs.readFile(config, 'utf8'), original);
 });
@@ -119,7 +122,7 @@ test('migrator updates and inserts Apache group policies per TLS virtual host', 
   assert.match(migrated, /secp384r1 # primary/);
   assert.equal(migrated.includes('\r\n'), true);
   assert.equal((await migrateRepository(root)).changeCount, 0);
-  await rollbackMigration(createMigrationReceipt(applied), { write: true });
+  await rollbackMigration(createMigrationReceipt(applied, key), { write: true });
   assert.equal(await fs.readFile(config, 'utf8'), original);
 });
 

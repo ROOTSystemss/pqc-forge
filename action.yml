@@ -73,6 +73,10 @@ inputs:
     description: Staging acceptance manifest containing receipt paths, measured metrics, rollback, and canary controls.
     required: false
     default: ""
+  signing_key:
+    description: Path to an ML-DSA-65 signing-key.json (from `pqc-forge keygen`) used to sign generated receipts. Without it, a throwaway identity is auto-provisioned per run, which proves internal consistency but not a stable signer identity — pass an organization-managed key file (e.g. written from a secret) for real provenance.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -105,10 +109,13 @@ runs:
         PQC_FORGE_BUDGET: ${{ inputs.budget }}
         PQC_FORGE_SEED: ${{ inputs.seed }}
         PQC_FORGE_OUTPUT: ${{ inputs.output }}
+        PQC_FORGE_SIGNING_KEY: ${{ inputs.signing_key }}
       run: |
         scenario_path="$PQC_FORGE_SCENARIO"
         if [ ! -f "$scenario_path" ]; then scenario_path="$GITHUB_ACTION_PATH/$scenario_path"; fi
-        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" breaklab "$scenario_path" --budget "$PQC_FORGE_BUDGET" --seed "$PQC_FORGE_SEED" --out "$PQC_FORGE_OUTPUT"
+        args=(breaklab "$scenario_path" --budget "$PQC_FORGE_BUDGET" --seed "$PQC_FORGE_SEED" --out "$PQC_FORGE_OUTPUT")
+        if [ -n "$PQC_FORGE_SIGNING_KEY" ]; then args+=(--signing-key "$PQC_FORGE_SIGNING_KEY"); fi
+        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" "${args[@]}"
     - name: Run target-runtime safety gate
       if: inputs.mode == 'runtime'
       shell: bash
@@ -122,6 +129,7 @@ runs:
         PQC_FORGE_RUNTIME_CONTAINER_CONFIG: ${{ inputs.runtime_container_config }}
         PQC_FORGE_DOCKER_EXECUTABLE: ${{ inputs.docker_executable }}
         PQC_FORGE_OUTPUT: ${{ inputs.output }}
+        PQC_FORGE_SIGNING_KEY: ${{ inputs.signing_key }}
       run: |
         if [ -z "$PQC_FORGE_RUNTIME_SERVER" ] || [ -z "$PQC_FORGE_RUNTIME_CONFIG" ]; then
           echo "runtime_server and runtime_config are required in runtime mode" >&2
@@ -136,6 +144,7 @@ runs:
           echo "runtime_container is required with runtime_container_config" >&2
           exit 64
         fi
+        if [ -n "$PQC_FORGE_SIGNING_KEY" ]; then args+=(--signing-key "$PQC_FORGE_SIGNING_KEY"); fi
         node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" "${args[@]}"
     - name: Run staging acceptance gate
       if: inputs.mode == 'staging'
@@ -143,9 +152,12 @@ runs:
       env:
         PQC_FORGE_STAGING_MANIFEST: ${{ inputs.staging_manifest }}
         PQC_FORGE_OUTPUT: ${{ inputs.output }}
+        PQC_FORGE_SIGNING_KEY: ${{ inputs.signing_key }}
       run: |
         if [ -z "$PQC_FORGE_STAGING_MANIFEST" ]; then
           echo "staging_manifest is required in staging mode" >&2
           exit 64
         fi
-        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" staging-gate "$PQC_FORGE_STAGING_MANIFEST" --out "$PQC_FORGE_OUTPUT"
+        args=(staging-gate "$PQC_FORGE_STAGING_MANIFEST" --out "$PQC_FORGE_OUTPUT")
+        if [ -n "$PQC_FORGE_SIGNING_KEY" ]; then args+=(--signing-key "$PQC_FORGE_SIGNING_KEY"); fi
+        node "$GITHUB_ACTION_PATH/bin/pqc-forge.js" "${args[@]}"

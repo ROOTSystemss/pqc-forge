@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { parseOpenSslEvidence } from '../src/protocol-lab/parser.js';
 import { explainDockerFailure, PROTOCOL_CASES, resolveDockerCommand } from '../src/protocol-lab/docker.js';
 import { createProtocolReceipt, verifyReceipt } from '../src/breaklab/receipt.js';
+import { generateSigningKey } from '../src/signing.js';
 import { renderProtocolLabHtml } from '../src/protocol-lab/report.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -31,7 +32,7 @@ test('protocol matrix and receipt are fixed, verifiable, and presentable', () =>
   assert.equal(PROTOCOL_CASES.length, 5);
   assert.ok(PROTOCOL_CASES.every((item) => Array.isArray(item.expectedFindings)));
   const run = { schema: 'pqc-forge.protocol-lab-run/v1', components: { openssl: '3.5.8', nginx: '1.30.4' }, cases: [], verdict: { pass: true } };
-  const receipt = createProtocolReceipt(run, PROTOCOL_CASES);
+  const receipt = createProtocolReceipt(run, PROTOCOL_CASES, generateSigningKey());
   assert.equal(verifyReceipt(receipt).valid, true);
   assert.match(renderProtocolLabHtml(receipt), /Real protocol evidence/);
 });
