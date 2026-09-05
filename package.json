@@ -28,7 +28,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
-    "test": "npm run build && node --test \"dist/**/*.test.js\""
+    "test": "npm run build && node --test dist/keys.test.js dist/sign.test.js dist/kem.test.js dist/encrypt.test.js dist/cli.test.js"
   },
   "engines": {
     "node": ">=20"
