@@ -25,9 +25,14 @@
     "dist",
     "!dist/**/*.test.*"
   ],
+  "workspaces": [
+    "server",
+    "web"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx src/cli.ts",
+    "dev:cli": "tsx src/cli.ts",
+    "dev": "npm run build && concurrently -n lib,server,web -c blue,green,magenta \"tsc -p tsconfig.json --watch --preserveWatchOutput\" \"npm run dev -w server\" \"npm run dev -w web\"",
     "test": "npm run build && node --test dist/keys.test.js dist/sign.test.js dist/kem.test.js dist/encrypt.test.js dist/cli.test.js"
   },
   "engines": {
@@ -40,7 +45,11 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.0",
+    "concurrently": "^9.0.1",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }

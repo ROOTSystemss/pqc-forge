@@ -71,6 +71,27 @@ field. `verify` and `encrypt` both work fine against a public-only file;
 `sign` and `decrypt` fail with a clear error if you point them at one
 ("this key file has no secret key...").
 
+## Web app
+
+A local web UI for everything above — no CLI needed — lives alongside
+the library as two workspaces:
+
+- `server/` — a small Express API (binds to `127.0.0.1` only) that
+  calls the same library functions the CLI uses.
+- `web/` — a React + Vite frontend with a tab per operation (Keys,
+  Sign, Verify, Encrypt, Decrypt), talking to the API through Vite's
+  dev proxy.
+
+```sh
+npm install     # once, from the repo root — installs all workspaces
+npm run dev     # builds the lib in watch mode, and runs server + web together
+```
+
+Then open the URL Vite prints (`http://127.0.0.1:5173`). Keys/files
+never leave your machine — the server is local-only and doesn't
+persist anything; generated keys and results download straight to your
+browser's downloads folder.
+
 ## File formats
 
 **Signing key file** (`pqc-forge.signing-key/v1`):
@@ -159,5 +180,6 @@ Linux and Windows on every push/PR once this repo has a remote.
 
 Signing (ML-DSA-65) and encryption (ML-KEM-768 + AES-256-GCM) are
 implemented and tested, including public-key-only export/sharing;
-`pqc-forge` can be `npm link`ed as a global command. Not yet: a GitHub
-remote (so CI actually runs) and an npm publish.
+`pqc-forge` can be `npm link`ed as a global command. A local web app
+(`server/` + `web/`, see above) wraps all of it in a UI. CI runs on
+push/PR against the GitHub remote. Not yet: an npm publish.
