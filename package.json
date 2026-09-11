@@ -1,6 +1,6 @@
 {
   "name": "@rootsystems/pqc-forge",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Nginx, HAProxy, and Apache repository-to-patch PQC migration evidence CLI",
   "type": "module",
   "bin": {

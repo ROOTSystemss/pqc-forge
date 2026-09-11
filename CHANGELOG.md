@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0
 
 - Added ML-DSA-65 (FIPS 204) signing to every receipt type, replacing hash-only tamper evidence with real post-quantum signatures (`src/signing.js`).
 - Added CycloneDX 1.6 CBOM export (`scan --cbom`) alongside SARIF and native JSON.
@@ -8,6 +8,8 @@
 - Added a multi-tenant REST API (`npm run api`, `src/api/*.js`) that runs every CLI command as an isolated, queued job behind a per-tenant API key, with per-tenant and global concurrency caps, crash reconciliation, and a `breaklab-grid` job exposing BreakLab's exhaustive client×server matrix for live rendering.
 - Added `GET /v1/jobs` to list a tenant's own job history, permissive CORS headers, and same-origin static serving of a built dashboard from the API server.
 - Added a web dashboard (`web/`, Vite + React + TypeScript) covering scan, migrate, live TLS verification, BreakLab, the BreakLab compatibility grid, job history, and receipt verification.
+- Added a light/dark/system theme toggle and a full visual design pass to the dashboard (segmented tab navigation, empty states, severity/progress bars, animated BreakLab grid cells).
+- Fixed the dashboard's BreakLab tab reading the wrong result shape (it expected the run directly; the job returns the signed receipt with the run nested at `.run`), found by driving the built UI end to end rather than only reviewing the diff.
 
 ## 0.10.0
 
