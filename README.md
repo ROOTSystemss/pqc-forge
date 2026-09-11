@@ -83,7 +83,7 @@ The bundled BreakLab demo intentionally fails its deployment policy. The release
 ## GitHub Action
 
 ```yaml
-- uses: rootsystems/pqc-forge@v0.11.0
+- uses: ROOTSystemss/pqc-forge@v0.11.2
   with:
     mode: scan
     target: .

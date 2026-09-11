@@ -29,11 +29,11 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rootsystems/pqc-forge.git"
+    "url": "git+https://github.com/ROOTSystemss/pqc-forge.git"
   },
-  "homepage": "https://github.com/rootsystems/pqc-forge#readme",
+  "homepage": "https://github.com/ROOTSystemss/pqc-forge#readme",
   "bugs": {
-    "url": "https://github.com/rootsystems/pqc-forge/issues"
+    "url": "https://github.com/ROOTSystemss/pqc-forge/issues"
   },
   "keywords": [
     "post-quantum-cryptography",
