@@ -1,0 +1,138 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+:root {
+  --bg: #f6f5f3;
+  --bg-panel: #ffffff;
+  --bg-inset: #f0eeea;
+  --border: #ddd9d2;
+  --text: #1c1a17;
+  --text-dim: #6b6559;
+  --accent: #0f6e5c;
+  --accent-strong: #0a4f42;
+  --accent-bg: rgba(15, 110, 92, 0.1);
+  --critical: #b3261e;
+  --critical-bg: rgba(179, 38, 30, 0.1);
+  --high: #b3541e;
+  --high-bg: rgba(179, 84, 30, 0.1);
+  --medium: #8a6d00;
+  --medium-bg: rgba(138, 109, 0, 0.1);
+  --low: #4d6b8a;
+  --low-bg: rgba(77, 107, 138, 0.1);
+  --pass: #0f6e5c;
+  --pass-bg: rgba(15, 110, 92, 0.12);
+  --fail: #b3261e;
+  --fail-bg: rgba(179, 38, 30, 0.1);
+
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --bg-panel: #1b1e23;
+    --bg-inset: #101215;
+    --border: #2b2f36;
+    --text: #e9e8e4;
+    --text-dim: #94918a;
+    --accent: #35d6ae;
+    --accent-strong: #6ee8c9;
+    --accent-bg: rgba(53, 214, 174, 0.12);
+    --critical: #ff6b60;
+    --critical-bg: rgba(255, 107, 96, 0.14);
+    --high: #ffab5e;
+    --high-bg: rgba(255, 171, 94, 0.14);
+    --medium: #f0d264;
+    --medium-bg: rgba(240, 210, 100, 0.13);
+    --low: #7fb3e0;
+    --low-bg: rgba(127, 179, 224, 0.13);
+    --pass: #35d6ae;
+    --pass-bg: rgba(53, 214, 174, 0.14);
+    --fail: #ff6b60;
+    --fail-bg: rgba(255, 107, 96, 0.14);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .mono {
+  font-family: var(--mono);
+}
+
+button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  padding: 7px 14px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06110d;
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+button.ghost:hover:not(:disabled) { color: var(--text); border-color: var(--border); }
+
+input[type='text'], input[type='number'], input[type='password'], textarea, select {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 10px;
+  width: 100%;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 4px;
+}
+
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+tr:last-child td { border-bottom: none; }
+
+::selection { background: var(--accent-bg); }

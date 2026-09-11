@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Added ML-DSA-65 (FIPS 204) signing to every receipt type, replacing hash-only tamper evidence with real post-quantum signatures (`src/signing.js`).
+- Added CycloneDX 1.6 CBOM export (`scan --cbom`) alongside SARIF and native JSON.
+- Added an Envoy adapter: classical-curve/missing-policy scanning, migration, and a BoringSSL-aware runtime probe.
+- Added a multi-tenant REST API (`npm run api`, `src/api/*.js`) that runs every CLI command as an isolated, queued job behind a per-tenant API key, with per-tenant and global concurrency caps, crash reconciliation, and a `breaklab-grid` job exposing BreakLab's exhaustive client×server matrix for live rendering.
+- Added `GET /v1/jobs` to list a tenant's own job history, permissive CORS headers, and same-origin static serving of a built dashboard from the API server.
+- Added a web dashboard (`web/`, Vite + React + TypeScript) covering scan, migrate, live TLS verification, BreakLab, the BreakLab compatibility grid, job history, and receipt verification.
+
 ## 0.10.0
 
 - Added agentless container execution to `runtime-probe` through direct Docker CLI arguments without a shell.

@@ -8,22 +8,23 @@ It is deliberately not another readiness dashboard. The sellable promise is:
 
 ## Current v0.10 scope
 
-- Static, file-and-line discovery for RSA, ECC, legacy TLS, weak RSA sizes, and classical-only Nginx groups.
-- Dry-run or applied Nginx, HAProxy, and Apache mod_ssl migration to `X25519MLKEM768` with classical fallbacks.
+- Static, file-and-line discovery for RSA, ECC, legacy TLS, weak RSA sizes, and classical-only Nginx, HAProxy, Apache, and Envoy groups.
+- Dry-run or applied Nginx, HAProxy, Apache mod_ssl, and Envoy migration to `X25519MLKEM768` with classical fallbacks.
 - Automatic backups for written changes.
 - Live TLS 1.3 evidence: negotiated protocol, cipher, key-exchange group, certificate signature algorithm, and runtime.
-- JSON schemas suitable for CI/CD and a future GitHub Action.
+- JSON schemas suitable for CI/CD, a composite GitHub Action, and a CycloneDX 1.6 CBOM export (`scan --cbom`) for SBOM/CBOM tooling.
 - BreakLab searches silent downgrade, incompatibility, PQ signature, fragmentation, and latency failures.
 - Fair equal-budget comparison of random, pairwise, simulated annealing, and adaptive distribution search.
-- Minimal counterexamples plus SHA-256 tamper-evident JSON receipts.
+- Minimal counterexamples plus ML-DSA-65 (FIPS 204) signed, tamper-evident JSON receipts for every command that emits evidence.
 - Self-contained HTML evidence report and composite GitHub Action.
 - One composite GitHub Action for SARIF/baseline repository gates or BreakLab compatibility gates.
 - Twelve-case, SHA-256-pinned public Nginx/HAProxy/Apache validation corpus with three clean controls.
 - End-to-end release gate covering tests, public configurations, BreakLab evidence, PR-pack integrity, package creation, and installed-CLI smoke testing.
-- Target-runtime probe for OpenSSL 3.5+, actual TLS group availability, server build discovery, hybrid config digests, and read-only syntax checks.
+- Target-runtime probe for OpenSSL 3.5+ (or BoringSSL for Envoy), actual TLS group availability, server build discovery, hybrid config digests, and read-only syntax checks.
 - Agentless container runtime probes that bind a host-side patched artifact to native checks inside a named staging container.
 - Per-artifact runtime receipt coverage in PR packs; unrelated, failing, partial, or tampered evidence cannot claim complete coverage.
 - Tamper-evident endpoint observations and a fail-closed staging gate for performance, soak, rollback, monitoring, canary, and named-operator controls.
+- A multi-tenant REST API (`npm run api`) that runs every CLI command as an isolated, queued job behind a per-tenant API key, plus a web dashboard (`web/`) for driving scan, migrate, live TLS verification, BreakLab, and receipt verification without the command line.
 
 The Nginx change requires a TLS runtime that supports `X25519MLKEM768`, such as OpenSSL 3.5+. PQC Forge does not implement cryptographic primitives.
 
@@ -118,10 +119,32 @@ On Windows, `npm run lab:protocol:windows` supplies explicit Docker Desktop and 
 
 Run `doctor` first for an automatic Docker/Compose/engine preflight. It discovers the standard Docker Desktop CLI location on Windows even when `PATH` is stale, provides a specific corrective action, and exits with code 7 while blocked. Set `PQC_FORGE_DOCKER` to override the Docker executable.
 
+## REST API and web dashboard
+
+`npm run api` starts a multi-tenant HTTP server (`bin/pqc-forge-api.js`, default port `8787`) that runs every CLI command above as a queued, tenant-isolated job instead of a one-shot process. Provision a tenant first — there is no self-serve signup endpoint by design:
+
+```powershell
+node ./bin/pqc-forge.js tenant-create --name "your-name" --out ./pqc-forge-api-data
+npm run api
+```
+
+The printed API key is shown once; only its SHA-256 hash is persisted. Every request authenticates with `Authorization: Bearer <api key>`, and every filesystem path a job touches is resolved underneath that tenant's own directory — there is no code path from one tenant's request to another tenant's data (`src/api/tenants.js`, `src/api/workspace.js`).
+
+Core routes: `POST /v1/workspaces` (upload an inline file list), `POST /v1/jobs` (submit `{ type, params }` for any job type — `scan`, `migrate`, `rollback`, `pr-pack`, `verify`, `runtime-probe`, `staging-gate`, `validate-corpus`, `breaklab`, `breaklab-grid`, `protocol-lab`), `GET /v1/jobs` (list this tenant's own job history), `GET /v1/jobs/:id` (poll status and live `progress`), `GET /v1/jobs/:id/result`, and `POST /v1/verify-receipt`. `GET /v1/health` is the only unauthenticated route.
+
+The bundled dashboard (`web/`, Vite + React + TypeScript) drives scan, migrate, live TLS verification, BreakLab, an exhaustive client×server BreakLab compatibility grid, job history, and receipt verification against that API from the browser. Build it once and the API server serves it from the same origin automatically, so there is nothing else to run and no CORS setup needed:
+
+```powershell
+npm run web:build
+npm run api
+```
+
+Then open `http://localhost:8787/` and connect with the tenant API key. See `web/README.md` for running the dashboard against a separately-hosted API (`npm run web:dev`) instead.
+
 ## Product path
 
 1. Reproduce the prepared real protocol workflow on a clean GitHub-hosted runner.
-2. Add safe patchers for Envoy, Go, Java, Kubernetes ingress, and common container images.
+2. Add safe patchers for Go, Java, Kubernetes ingress, and common container images (Envoy is done — scan, migrate, and runtime-probe already cover it).
 3. Package as a GitHub App that opens migration pull requests and attaches tamper-evident evidence.
 4. Add signing, licensing, checkout, and explicit opt-in evidence upload for private repositories.
 

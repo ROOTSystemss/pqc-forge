@@ -10,6 +10,10 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "api": "node ./bin/pqc-forge-api.js",
+    "web:install": "npm install --prefix web",
+    "web:dev": "npm run dev --prefix web",
+    "web:build": "npm run build --prefix web",
+    "serve": "npm run web:build && npm run api",
     "demo": "node ./bin/pqc-forge.js scan ./test/fixtures/vulnerable",
     "demo:migrate": "node ./bin/pqc-forge.js migrate ./test/fixtures/vulnerable",
     "demo:breaklab": "node ./bin/pqc-forge.js breaklab ./scenarios/tls-migration-demo.json --budget 30 --seed 42 --out ./demo-output --no-fail",
