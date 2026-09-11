@@ -7,6 +7,14 @@ import { createApiServer } from '../src/api/server.js';
 
 const projectRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const port = Number(process.env.PQC_FORGE_API_PORT ?? 8787);
+// Loopback-only by default: this server speaks plain HTTP and authenticates
+// with a bearer API key in a header, so binding every interface (Node's own
+// default with no host argument) would put that key on the wire, unencrypted,
+// to anyone who can reach the host over the network - not just localhost.
+// An operator who wants it reachable beyond this machine sets this
+// explicitly, and is then responsible for putting a TLS-terminating reverse
+// proxy in front of it (see the warning below and README.md).
+const host = process.env.PQC_FORGE_API_HOST || '127.0.0.1';
 const apiHome = path.resolve(process.env.PQC_FORGE_API_HOME ?? './pqc-forge-api-data');
 const signingKeyPath = process.env.PQC_FORGE_SIGNING_KEY || null;
 
@@ -22,11 +30,14 @@ const webDistPath = process.env.PQC_FORGE_WEB_DIST
 
 const { server } = createApiServer({ apiHome, signingKeyPath, webDistPath });
 
-server.listen(port, () => {
-  console.log(`PQC Forge API listening on :${port}`);
+server.listen(port, host, () => {
+  console.log(`PQC Forge API listening on ${host}:${port}`);
   console.log(`Tenant data: ${apiHome}`);
   console.log(webDistPath ? `Dashboard: http://localhost:${port}/ (serving ${webDistPath})` : 'Dashboard: not built — run `npm run web:build` to serve it from this same server.');
   console.log('Provision a tenant with: node ./bin/pqc-forge.js tenant-create --name "<name>" --out ' + apiHome);
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+    console.log(`WARNING: bound to ${host}, not loopback-only. This server speaks plain HTTP with a bearer API key — put a TLS-terminating reverse proxy in front of it before exposing it beyond this machine.`);
+  }
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

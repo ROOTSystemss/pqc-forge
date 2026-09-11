@@ -58,6 +58,20 @@ wired into the UI — they assume infrastructure (a staging container, Docker,
 a real self-hosted runner) a generic dashboard cannot provide safely. Drive
 those from the CLI or API directly, as documented in the root `README.md`.
 
+## A known tradeoff: the API key lives in localStorage
+
+The Connect screen persists the tenant API key in the browser's
+`localStorage` (`api.ts`) so a return visit doesn't require re-entering it.
+That is a deliberate convenience tradeoff, not an oversight: it means the
+key is readable by any script that runs on this origin, which is why the
+dashboard pulls in no runtime dependency beyond React itself and the bundled
+fonts — there is no third-party script on the page that could exfiltrate it.
+It is the same tradeoff most browser-based API-key tools make (a PAT pasted
+into a dev tool, a webhook secret in a form). If that tradeoff doesn't fit
+your deployment, don't rely on it: proxy the dashboard behind an
+authentication layer of your own instead of handing tenant keys to browsers
+at all.
+
 ---
 
 Built with Vite + React + TypeScript.

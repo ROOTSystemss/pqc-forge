@@ -169,6 +169,12 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
   const resolvedWebDist = webDistPath ? path.resolve(webDistPath) : null;
 
   const server = createServer(async (req, res) => {
+    // Baseline response hardening on every route, including the static
+    // dashboard: never let a browser guess a content-type into something
+    // executable, and never leak this origin's URLs (job ids, tenant ids)
+    // to a third party via the Referer header on an outbound link.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     // Permissive CORS: the dashboard authenticates with a bearer API key in
     // a header, never a cookie, so there is no ambient credential for a
     // third-party origin to ride along with — `*` here does not widen what

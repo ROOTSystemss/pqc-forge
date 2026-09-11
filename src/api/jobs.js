@@ -32,6 +32,17 @@ const DEFAULT_TENANT_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_TENANT_C
 const DEFAULT_DOCKER_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_DOCKER_CONCURRENCY ?? 1);
 const DOCKER_JOB_TYPES = new Set(['protocol-lab']);
 
+// Every jobId this module ever generates (submit(), below) matches this
+// exact format. Enforcing it here — the same way tenants.js and
+// workspace.js validate their own ids before any path.join — means path
+// containment for job lookups holds by explicit design, not merely as an
+// accident of how the URL router and path.join each happen to behave on
+// the untrusted id a request supplies (path.join does not honor an
+// absolute-looking segment the way path.resolve would, and the HTTP
+// router only ever captures a single non-'/' path segment, but neither of
+// those is a contract this module should have to keep re-deriving).
+const JOB_ID_PATTERN = /^j_[0-9a-f]{16}$/;
+
 function jobDirectory(apiHome, tenantId, jobId) {
   return path.join(tenantJobsDirectory(apiHome, tenantId), jobId);
 }
@@ -166,10 +177,21 @@ const HANDLERS = {
     };
     if (!scenario.profiles.certificates[fixed.certificate]) throw new Error(`Unknown certificate profile: ${fixed.certificate}`);
     if (!scenario.profiles.networks[fixed.network]) throw new Error(`Unknown network profile: ${fixed.network}`);
-    const paceMs = Number.isFinite(params.paceMs) ? Math.max(0, Number(params.paceMs)) : 180;
+    // Both bounded against the same abuse shape as `breaklab`'s own
+    // enumeration limit: an authenticated tenant fully controls `scenario`
+    // and `paceMs`, and this loop is unbudgeted (breaklab's evaluations are
+    // capped by `budget`; a grid evaluates every cell). Without a cap here,
+    // a scenario with large client/server dimensions turns one job into an
+    // effectively unbounded CPU/memory/disk-write loop - job.progress is
+    // rewritten to disk with the full, ever-growing `cells` array on every
+    // iteration - that also pins one of the shared concurrency slots.
+    const MAX_GRID_CELLS = 4096;
+    const MAX_PACE_MS = 2000;
+    const total = clients.length * servers.length;
+    if (total > MAX_GRID_CELLS) throw new Error(`Grid has ${total} client×server cells; the limit is ${MAX_GRID_CELLS}. Use a scenario with fewer client/server values.`);
+    const paceMs = Number.isFinite(params.paceMs) ? Math.min(MAX_PACE_MS, Math.max(0, Number(params.paceMs))) : 180;
 
     const cells = [];
-    const total = clients.length * servers.length;
     await reportProgress?.({ total, completed: 0, cells: [] });
     for (const client of clients) {
       for (const server of servers) {
@@ -296,6 +318,7 @@ export function createJobQueue({
   }
 
   async function getJob(tenantId, jobId) {
+    if (!JOB_ID_PATTERN.test(jobId ?? '')) return null;
     try {
       const record = JSON.parse(await fs.readFile(path.join(jobDirectory(apiHome, tenantId, jobId), 'job.json'), 'utf8'));
       if (record.tenantId !== tenantId) return null;
@@ -331,6 +354,7 @@ export function createJobQueue({
   }
 
   async function getResult(tenantId, jobId) {
+    if (!JOB_ID_PATTERN.test(jobId ?? '')) return null;
     try {
       return JSON.parse(await fs.readFile(path.join(jobDirectory(apiHome, tenantId, jobId), 'result.json'), 'utf8'));
     } catch (error) {

@@ -1,6 +1,6 @@
 # Production safety contract
 
-PQC Forge v0.10 generates migration evidence; it does not authorize unattended production deployment.
+PQC Forge v0.11 generates migration evidence; it does not authorize unattended production deployment.
 
 ## Required sequence
 
@@ -32,3 +32,11 @@ PQC Forge v0.10 generates migration evidence; it does not authorize unattended p
 - That a rollout or rollback will succeed under live traffic.
 
 Run probes only in staging or an isolated target-like container with least privilege. Nginx, HAProxy, and Apache syntax commands do not reload the service, but real configurations may read referenced files or attempt to access configured paths.
+
+## REST API deployment
+
+`bin/pqc-forge-api.js` binds `127.0.0.1` (loopback only) by default because it speaks plain HTTP and authenticates with a bearer API key in a header — anyone who can reach an unencrypted socket can read that key off the wire. Reaching it from another machine requires explicitly setting `PQC_FORGE_API_HOST`, which is then the operator's decision, not the default. Before doing that:
+
+- Put a TLS-terminating reverse proxy in front of it. This server does not terminate TLS itself.
+- Treat every job type as running with the API process's own privileges and network reach. `verify` and `runtime-probe` connect to a target the authenticated tenant supplies — in a shared deployment, a tenant can direct the server to open connections to hosts on its own network (including link-local/metadata addresses), the same way any TLS-verification or health-check tool can. Run the API on a host whose network reachability you're comfortable exposing to every tenant, not one with privileged internal access.
+- `runtime-probe` invokes real server binaries (`nginx -t`, `haproxy -c`, etc.) on whatever host runs the API process — the same safety contract as the CLI above applies; least-privilege that host.

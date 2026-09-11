@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.1
+
+Hardening pass across the REST API, found by auditing the whole surface rather than reviewing a diff.
+
+- Fixed `breaklab-grid` having no bound on client×server combinations (unlike `breaklab`, which already caps total states) or on the tenant-supplied `paceMs`: an authenticated tenant could submit a scenario whose cell count made a single job an effectively unbounded CPU/memory/disk-write loop, or set an hours-long pace to pin a shared concurrency slot. Both are now capped (4096 cells, 2000ms pace) with a clear error and a test proving each.
+- `bin/pqc-forge-api.js` now binds `127.0.0.1` by default instead of every interface (Node's own default with no host argument) — this server speaks plain HTTP with a bearer API key, so the previous default put that key on the wire to anything on the network that could reach the host, not just localhost. `PQC_FORGE_API_HOST` opts back in, with a startup warning.
+- Added `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` to every API response.
+- Job lookups (`GET /v1/jobs/:id`, `.../result`) now validate the job id's format explicitly before touching the filesystem, the same way workspace and tenant ids already do — closing a defense-in-depth gap where containment depended on how the HTTP router and `path.join` each happen to behave on an untrusted id, rather than on an explicit check owned by this module.
+- `SECURITY.md`'s scope now names the REST API and the signing/receipt-verification code directly; it previously covered only the CLI and composite Action, predating Stage 4.
+- `PRODUCTION_SAFETY.md` gained a REST API deployment section: the loopback default, why a TLS-terminating reverse proxy is required before widening it, and that `verify`/`runtime-probe` connect to a tenant-supplied target from the API host's own network (the same shape as any TLS-verification tool, but worth stating for a shared deployment).
+
 ## 0.11.0
 
 - Added ML-DSA-65 (FIPS 204) signing to every receipt type, replacing hash-only tamper evidence with real post-quantum signatures (`src/signing.js`).

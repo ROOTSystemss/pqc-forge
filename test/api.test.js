@@ -215,6 +215,49 @@ test('breaklab-grid job resolves the real client×server matrix incrementally, o
   }
 });
 
+test('breaklab-grid rejects a scenario whose client×server matrix exceeds the cell cap, and clamps an oversized pace', async () => {
+  const ctx = await startServer();
+  try {
+    const tenant = await newTenant(ctx.apiHome);
+    // 65 clients x 65 servers = 4225 cells, one over the 4096 cap - built
+    // programmatically since validateScenario requires a real profile entry
+    // for every dimension value, not just a long dimension array.
+    const oversized = structuredClone(demoScenario);
+    const clientNames = Array.from({ length: 65 }, (_, i) => `client-${i}`);
+    const serverNames = Array.from({ length: 65 }, (_, i) => `server-${i}`);
+    oversized.dimensions.client = clientNames;
+    oversized.dimensions.server = serverNames;
+    for (const name of clientNames) oversized.profiles.clients[name] = { groups: ['X25519'], signatures: ['RSA-PSS'] };
+    for (const name of serverNames) oversized.profiles.servers[name] = { groups: ['X25519'] };
+
+    const submit = await fetch(`${ctx.base}/v1/jobs`, {
+      method: 'POST', headers: tenant.headers,
+      body: JSON.stringify({ type: 'breaklab-grid', params: { scenario: oversized } })
+    });
+    const submitted = await submit.json();
+    const finished = await pollJob(ctx.base, tenant.headers, submitted.jobId, { timeoutMs: 5000 });
+    assert.equal(finished.status, 'failed');
+    assert.match(finished.error, /4225 client×server cells.*limit is 4096/);
+
+    // A tenant-supplied paceMs of an hour must not be allowed to pin a
+    // concurrency slot for anywhere near that long - it should clamp to
+    // the 2000ms cap. The first cell resolves immediately (the pace delay
+    // comes *after* each cell), so after ~2.2s an unclamped hour-long pace
+    // would still show exactly 1 cell done - clamping shows a 2nd.
+    const clamped = await fetch(`${ctx.base}/v1/jobs`, {
+      method: 'POST', headers: tenant.headers,
+      body: JSON.stringify({ type: 'breaklab-grid', params: { scenario: demoScenario, paceMs: 60 * 60 * 1000 } })
+    });
+    const clampedSubmitted = await clamped.json();
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    const midRun = await (await fetch(`${ctx.base}/v1/jobs/${clampedSubmitted.jobId}`, { headers: tenant.headers })).json();
+    assert.equal(midRun.status, 'running');
+    assert.ok(midRun.progress.completed >= 2, `expected paceMs to be clamped to 2000ms (>=2 cells by now), got ${midRun.progress.completed}`);
+  } finally {
+    await ctx.close();
+  }
+});
+
 test('a tenant cannot read another tenant\'s workspace or job through path or id substitution', async () => {
   const ctx = await startServer();
   try {
@@ -246,6 +289,26 @@ test('a tenant cannot read another tenant\'s workspace or job through path or id
     const aliceJobId = (await aliceScan.json()).jobId;
     const bobReadsAliceJob = await fetch(`${ctx.base}/v1/jobs/${aliceJobId}`, { headers: bob.headers });
     assert.equal(bobReadsAliceJob.status, 404);
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('a malformed job id is rejected by an explicit format check, not left to path.join and the router alone', async () => {
+  const ctx = await startServer();
+  try {
+    const tenant = await newTenant(ctx.apiHome);
+    // None of these have a real path-traversal effect given how the HTTP
+    // router and path.join each behave (verified separately) - the point of
+    // this test is that job lookups reject anything not shaped like a real
+    // generated job id by explicit check, the same way workspaceId already
+    // does, rather than relying on those other layers' behavior to remain
+    // safe. A regression here (e.g. someone switching jobDirectory to
+    // path.resolve) would be caught by "traversal-shaped" cases at minimum.
+    for (const malformed of ['..', 'j_deadbeefdeadbee', 'j_deadbeefdeadbeefextra', '../../etc/passwd', 'not-a-job-id']) {
+      const response = await fetch(`${ctx.base}/v1/jobs/${encodeURIComponent(malformed)}`, { headers: tenant.headers });
+      assert.equal(response.status, 404, `expected 404 for job id ${JSON.stringify(malformed)}`);
+    }
   } finally {
     await ctx.close();
   }
@@ -393,6 +456,8 @@ test('CORS headers allow a browser dashboard to call the API from another origin
 
     const health = await fetch(`${ctx.base}/v1/health`);
     assert.equal(health.headers.get('access-control-allow-origin'), '*');
+    assert.equal(health.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(health.headers.get('referrer-policy'), 'no-referrer');
   } finally {
     await ctx.close();
   }

@@ -76,7 +76,7 @@ Repeat `--runtime-receipt <file>` when building a PR pack to cover multiple migr
 
 `validate-corpus` downloads only HTTPS sources pinned in `validation/corpus.json`, enforces a 1 MiB limit and exact SHA-256, creates PR packs in disposable repositories, verifies every receipt and listed artifact, applies and reverses each patch, and proves clean controls are untouched. The corpus contains five Nginx, four HAProxy, and three Apache configurations.
 
-`npm run release:check` is the start-to-end software release gate. It creates `release-output/release-0.11.0/` with test logs, corpus evidence, BreakLab evidence, a release PR pack, the npm tarball, and a final tamper-evident release receipt. A software release PASS does not mean a customer configuration is production-ready. It refuses to overwrite an existing run. Use `-- --skip-public --out <directory>` only for offline CI; tagged and manual release workflows run the public corpus.
+`npm run release:check` is the start-to-end software release gate. It creates `release-output/release-0.11.1/` with test logs, corpus evidence, BreakLab evidence, a release PR pack, the npm tarball, and a final tamper-evident release receipt. A software release PASS does not mean a customer configuration is production-ready. It refuses to overwrite an existing run. Use `-- --skip-public --out <directory>` only for offline CI; tagged and manual release workflows run the public corpus.
 
 The bundled BreakLab demo intentionally fails its deployment policy. The release gate passes that step only when the detector reproduces the declared failing verdict and at least six distinct failure modes; an unexpectedly clean result fails the release gate.
 
@@ -121,7 +121,7 @@ Run `doctor` first for an automatic Docker/Compose/engine preflight. It discover
 
 ## REST API and web dashboard
 
-`npm run api` starts a multi-tenant HTTP server (`bin/pqc-forge-api.js`, default port `8787`) that runs every CLI command above as a queued, tenant-isolated job instead of a one-shot process. Provision a tenant first — there is no self-serve signup endpoint by design:
+`npm run api` starts a multi-tenant HTTP server (`bin/pqc-forge-api.js`, default port `8787`) that runs every CLI command above as a queued, tenant-isolated job instead of a one-shot process. It binds `127.0.0.1` only by default — set `PQC_FORGE_API_HOST` to change that, and put a TLS-terminating reverse proxy in front of it first if you do; see `PRODUCTION_SAFETY.md`. Provision a tenant first — there is no self-serve signup endpoint by design:
 
 ```powershell
 node ./bin/pqc-forge.js tenant-create --name "your-name" --out ./pqc-forge-api-data

@@ -24,8 +24,13 @@ In scope:
 - The `pqc-forge` CLI (`bin/`, `src/`) — scanning, migration, rollback,
   PR-pack generation, BreakLab, runtime-probe, staging-gate, validate-corpus.
 - The composite GitHub Action (`action.yml`).
+- The multi-tenant REST API (`bin/pqc-forge-api.js`, `src/api/`) — tenant
+  isolation (one tenant reading, writing, or enumerating another tenant's
+  workspaces, jobs, or results), API key handling, and any path escaping a
+  tenant's own directory.
 - Receipt tampering: any way to make a modified receipt, patch, or artifact
   verify as authentic.
+- Signature/verification bypass in `src/signing.js` or `src/breaklab/receipt.js`.
 - Command/argument injection in any code path that shells out (Docker,
   `git apply`, server syntax checks).
 
