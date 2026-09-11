@@ -167,6 +167,54 @@ test('migrate job with write:true mutates only that tenant\'s own workspace copy
   }
 });
 
+test('breaklab-grid job resolves the real client×server matrix incrementally, observable mid-run', async () => {
+  const ctx = await startServer();
+  try {
+    const tenant = await newTenant(ctx.apiHome);
+    const submit = await fetch(`${ctx.base}/v1/jobs`, {
+      method: 'POST', headers: tenant.headers,
+      // A real (if short) pace between cells so a poller mid-run can
+      // observe a genuinely partial `progress`, not just queued/succeeded.
+      body: JSON.stringify({ type: 'breaklab-grid', params: { scenario: demoScenario, paceMs: 60 } })
+    });
+    const submitted = await submit.json();
+    assert.equal(submitted.status, 'queued');
+    assert.equal(submitted.progress, null);
+
+    // Poll once shortly after submission: with 9 cells (3 clients × 3
+    // servers) at 60ms apart, this should land mid-run with some cells
+    // resolved and fewer than the total — proof this is real incremental
+    // progress, not a single atomic jump from empty to complete.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const midRun = await (await fetch(`${ctx.base}/v1/jobs/${submitted.jobId}`, { headers: tenant.headers })).json();
+    assert.equal(midRun.progress.total, 9);
+    assert.ok(midRun.progress.completed > 0, 'expected at least one cell resolved by now');
+    assert.ok(midRun.progress.completed < midRun.progress.total, 'expected the run to still be mid-flight, not already complete');
+    assert.equal(midRun.progress.cells.length, midRun.progress.completed);
+
+    const finished = await pollJob(ctx.base, tenant.headers, submitted.jobId, { timeoutMs: 5000 });
+    assert.equal(finished.status, 'succeeded');
+    assert.equal(finished.progress.completed, 9);
+
+    const result = await (await fetch(`${ctx.base}/v1/jobs/${submitted.jobId}/result`, { headers: tenant.headers })).json();
+    assert.equal(result.schema, 'pqc-forge.breaklab-grid/v1');
+    assert.deepEqual(result.dimensions.client, demoScenario.dimensions.client);
+    assert.deepEqual(result.dimensions.server, demoScenario.dimensions.server);
+    assert.equal(result.cells.length, 9);
+    // Cross-check one real cell against the engine's own pure function
+    // directly, so this test would fail if the handler ever diverged from
+    // real evaluation (e.g. started faking results).
+    const { evaluateCandidate, validateScenario } = await import('../src/breaklab/engine.js');
+    const scenario = validateScenario(demoScenario);
+    const expectedCell = result.cells[0];
+    const directEval = evaluateCandidate(scenario, { client: expectedCell.client, server: expectedCell.server, ...result.fixed });
+    assert.equal(expectedCell.negotiatedGroup, directEval.negotiatedGroup);
+    assert.deepEqual(expectedCell.findings, directEval.findings);
+  } finally {
+    await ctx.close();
+  }
+});
+
 test('a tenant cannot read another tenant\'s workspace or job through path or id substitution', async () => {
   const ctx = await startServer();
   try {

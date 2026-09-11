@@ -9,7 +9,7 @@ import { verifyTls } from '../verifier.js';
 import { writeRuntimeEvidence } from '../runtime-probe.js';
 import { evaluateStagingGate } from '../staging-gate.js';
 import { validateCorpus } from '../validation.js';
-import { runBreakLab } from '../breaklab/engine.js';
+import { runBreakLab, evaluateCandidate, validateScenario } from '../breaklab/engine.js';
 import { runDockerProtocolLab } from '../protocol-lab/docker.js';
 import { compareScans } from '../baseline.js';
 import {
@@ -140,6 +140,49 @@ const HANDLERS = {
     const run = await runDockerProtocolLab({ projectName: `pqc-forge-lab-job-${jobId}` });
     const receipt = createProtocolReceipt(run, { schema: 'pqc-forge.protocol-matrix/v1' }, signingKey);
     return { run, receipt };
+  },
+
+  /**
+   * Full client×server compatibility matrix for one fixed
+   * certificate/network/fallback slice, computed with the real
+   * `evaluateCandidate` — the same pure function `breaklab`'s search
+   * strategies call — for every combination, not a budget-limited sample.
+   * This is a distinct artifact from `breaklab`: that job is the
+   * authoritative, receipted, multi-strategy search evidence; this one
+   * exists so a UI can render an honest, exhaustive grid for one slice
+   * of the scenario. Cells are evaluated and persisted to job.progress
+   * one at a time with a real (small, configurable) pause between them,
+   * so a concurrent poller sees the true, current set of resolved cells
+   * — not a fabricated animation replaying already-known results.
+   */
+  async 'breaklab-grid'({ params, reportProgress }) {
+    const scenario = validateScenario(params.scenario);
+    const clients = scenario.dimensions.client;
+    const servers = scenario.dimensions.server;
+    const fixed = {
+      certificate: params.certificate ?? scenario.dimensions.certificate[0],
+      network: params.network ?? scenario.dimensions.network[0],
+      allowClassicalFallback: params.allowClassicalFallback ?? scenario.dimensions.allowClassicalFallback[0]
+    };
+    if (!scenario.profiles.certificates[fixed.certificate]) throw new Error(`Unknown certificate profile: ${fixed.certificate}`);
+    if (!scenario.profiles.networks[fixed.network]) throw new Error(`Unknown network profile: ${fixed.network}`);
+    const paceMs = Number.isFinite(params.paceMs) ? Math.max(0, Number(params.paceMs)) : 180;
+
+    const cells = [];
+    const total = clients.length * servers.length;
+    await reportProgress?.({ total, completed: 0, cells: [] });
+    for (const client of clients) {
+      for (const server of servers) {
+        const evaluated = evaluateCandidate(scenario, { client, server, ...fixed });
+        cells.push({
+          client, server, negotiatedGroup: evaluated.negotiatedGroup,
+          findings: evaluated.findings, severity: evaluated.severity, pass: evaluated.findings.length === 0
+        });
+        await reportProgress?.({ total, completed: cells.length, cells: [...cells] });
+        if (paceMs > 0 && cells.length < total) await new Promise((resolve) => setTimeout(resolve, paceMs));
+      }
+    }
+    return { schema: 'pqc-forge.breaklab-grid/v1', scenario: scenario.name, dimensions: { client: clients, server: servers }, fixed, cells };
   }
 };
 
@@ -198,8 +241,12 @@ export function createJobQueue({
     await persist(entry.tenantId, entry.jobId, entry.record);
     try {
       const signingKey = await resolveSigningKey();
+      const reportProgress = async (progress) => {
+        entry.record.progress = progress;
+        await persist(entry.tenantId, entry.jobId, entry.record);
+      };
       const result = await handlers[entry.record.type]({
-        apiHome, tenantId: entry.tenantId, jobId: entry.jobId, jobDir, params: entry.record.params, signingKey
+        apiHome, tenantId: entry.tenantId, jobId: entry.jobId, jobDir, params: entry.record.params, signingKey, reportProgress
       });
       await fs.writeFile(path.join(jobDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
       entry.record.status = 'succeeded';
@@ -233,7 +280,7 @@ export function createJobQueue({
     await fs.mkdir(jobDir, { recursive: true });
     const record = {
       schema: JOB_SCHEMA, jobId, tenantId, type, params,
-      status: 'queued', createdAt: new Date().toISOString(), startedAt: null, finishedAt: null, error: null
+      status: 'queued', createdAt: new Date().toISOString(), startedAt: null, finishedAt: null, error: null, progress: null
     };
     await persist(tenantId, jobId, record);
     // Snapshot before scheduling: execute() mutates `record` in place (so
