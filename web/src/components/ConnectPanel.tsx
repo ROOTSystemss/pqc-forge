@@ -35,7 +35,18 @@ export function ConnectPanel({
 
   return (
     <div className="connect-screen">
-      <Panel title="Connect to PQC Forge">
+      <Panel>
+        <div className="connect-hero">
+          <span className="brand-mark-lg">◈</span>
+          <h1>PQC Forge</h1>
+          <p>Repository-to-proof migration for post-quantum TLS.</p>
+        </div>
+        <ul className="connect-features">
+          <li>Static crypto discovery</li>
+          <li>Signed, tamper-evident receipts</li>
+          <li>Live TLS 1.3 verification</li>
+          <li>Compatibility BreakLab search</li>
+        </ul>
         <form onSubmit={handleConnect} className="connect-form">
           <div>
             <label>API base URL</label>
@@ -46,7 +57,7 @@ export function ConnectPanel({
             <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="pqcf_t_…" />
           </div>
           <button className="primary" type="submit" disabled={busy || !baseUrl.trim() || !apiKey.trim()}>
-            {busy ? 'Connecting…' : 'Connect'}
+            {busy ? 'Connecting…' : 'Connect →'}
           </button>
           <ErrorNote message={error} />
         </form>

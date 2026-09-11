@@ -3,7 +3,7 @@ import type { PqcForgeClient } from '../api';
 import { useJobRunner } from '../useJobRunner';
 import { DEMO_SCENARIO } from '../fixtures';
 import type { BreakLabGridCell, BreakLabGridResult } from '../types';
-import { ErrorNote, Panel, Spinner } from './common';
+import { ErrorNote, Panel, Spinner, Tip } from './common';
 
 /**
  * Renders the exhaustive client×server matrix live, cell by cell, as the
@@ -49,6 +49,9 @@ export function BreakLabGridTab({ client }: { client: PqcForgeClient | null }) {
           </button>
           {(running || result) && <span className="muted" style={{ alignSelf: 'flex-end' }}>{completed} / {total} resolved</span>}
         </div>
+        {(running || result) && (
+          <div className="progress-bar"><div className="progress-fill" style={{ width: `${total ? (completed / total) * 100 : 0}%` }} /></div>
+        )}
         <ErrorNote message={error} />
       </Panel>
 
@@ -69,17 +72,25 @@ export function BreakLabGridTab({ client }: { client: PqcForgeClient | null }) {
                     {clients.map((clientName) => {
                       const cell = cellByKey.get(`${clientName}|${serverName}`);
                       const cls = !cell ? 'grid-cell pending' : cell.pass ? 'grid-cell pass' : 'grid-cell fail';
-                      const title = !cell
+                      const tip = !cell
                         ? 'not yet evaluated'
                         : `${cell.negotiatedGroup}\n${cell.findings.map((f) => f.message).join('\n') || 'no findings'}`;
-                      return <td key={clientName}><div className={cls} title={title}>{cell ? (cell.pass ? '✓' : cell.severity) : ''}</div></td>;
+                      return (
+                        <td key={clientName}>
+                          <Tip text={tip}><div className={cls}>{cell ? (cell.pass ? '✓' : cell.severity) : ''}</div></Tip>
+                        </td>
+                      );
                     })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="muted small">Hover a cell for the negotiated group and findings. Green = clean, red = failing (number is severity).</p>
+          <div className="grid-legend">
+            <span><span className="swatch pending" />not yet evaluated</span>
+            <span><span className="swatch pass" />clean</span>
+            <span><span className="swatch fail" />failing (number = severity)</span>
+          </div>
         </Panel>
       )}
     </div>

@@ -59,12 +59,15 @@ export function WorkspaceEditor({ files, onChange }: { files: WorkspaceFile[]; o
 
       {current && (
         <div className="file-editor">
-          <div className="file-editor-row">
-            <input
-              type="text" value={current.path}
-              onChange={(event) => updateFile(active, { path: event.target.value })}
-              placeholder="relative/path.conf"
-            />
+          <div className="file-editor-chrome">
+            <span className="traffic" /><span className="traffic" /><span className="traffic" />
+            <div className="file-editor-row">
+              <input
+                type="text" value={current.path}
+                onChange={(event) => updateFile(active, { path: event.target.value })}
+                placeholder="relative/path.conf"
+              />
+            </div>
             <button className="ghost" onClick={() => removeFile(active)} disabled={files.length <= 1}>remove</button>
           </div>
           <textarea

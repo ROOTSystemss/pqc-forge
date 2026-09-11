@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { PqcForgeClient } from '../api';
 import { ApiError } from '../api';
 import type { JobRecord } from '../types';
-import { ErrorNote, JsonBlock, Panel, StatusBadge } from './common';
+import { EmptyState, ErrorNote, JsonBlock, Panel, StatusBadge } from './common';
 
 export function JobsTab({ client }: { client: PqcForgeClient | null }) {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
@@ -42,21 +42,23 @@ export function JobsTab({ client }: { client: PqcForgeClient | null }) {
     <div className="tab-grid">
       <Panel title={`Jobs (${total})`} actions={<button className="ghost" onClick={refresh}>refresh</button>}>
         <ErrorNote message={error} />
-        {jobs.length === 0 ? <p className="muted">No jobs submitted yet from this tenant.</p> : (
-          <table>
-            <thead><tr><th>Type</th><th>Status</th><th>Created</th><th>Progress</th><th></th></tr></thead>
-            <tbody>
-              {jobs.map((job) => (
-                <tr key={job.jobId}>
-                  <td className="mono">{job.type}</td>
-                  <td><StatusBadge status={job.status} /></td>
-                  <td className="mono small">{new Date(job.createdAt).toLocaleString()}</td>
-                  <td>{job.progress ? `${job.progress.completed}/${job.progress.total}` : '—'}</td>
-                  <td><button className="ghost" onClick={() => inspect(job)}>view</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {jobs.length === 0 ? <EmptyState icon="☰" message="No jobs submitted yet from this tenant." hint="Run something from another tab and it will show up here." /> : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Type</th><th>Status</th><th>Created</th><th>Progress</th><th></th></tr></thead>
+              <tbody>
+                {jobs.map((job) => (
+                  <tr key={job.jobId}>
+                    <td className="mono">{job.type}</td>
+                    <td><StatusBadge status={job.status} /></td>
+                    <td className="mono small">{new Date(job.createdAt).toLocaleString()}</td>
+                    <td>{job.progress ? `${job.progress.completed}/${job.progress.total}` : '—'}</td>
+                    <td><button className="ghost" onClick={() => inspect(job)}>view</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Panel>
 

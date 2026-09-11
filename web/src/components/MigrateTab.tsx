@@ -4,7 +4,7 @@ import { ApiError } from '../api';
 import { useJobRunner } from '../useJobRunner';
 import { EXAMPLE_WORKSPACES } from '../fixtures';
 import type { MigrationResult, Receipt, ReceiptVerification, WorkspaceFile } from '../types';
-import { ErrorNote, PassFailBadge, Panel, Spinner } from './common';
+import { EmptyState, ErrorNote, PassFailBadge, Panel, Spinner } from './common';
 import { WorkspaceEditor } from './WorkspaceEditor';
 
 export function MigrateTab({ client }: { client: PqcForgeClient | null }) {
@@ -62,7 +62,7 @@ export function MigrateTab({ client }: { client: PqcForgeClient | null }) {
       </Panel>
 
       <Panel title="Proposed changes">
-        {!result && <p className="muted">Run a migration to see proposed changes here.</p>}
+        {!result && <EmptyState icon="⇄" message="Run a migration to see proposed changes here." />}
         {result && (
           <>
             <div className="summary-row">
@@ -71,7 +71,7 @@ export function MigrateTab({ client }: { client: PqcForgeClient | null }) {
               {verification && <PassFailBadge pass={verification.valid} passLabel="receipt verified" failLabel="receipt invalid" />}
             </div>
             {result.migration.changes.length === 0 ? (
-              <p className="muted">No changes needed — this configuration is already hybrid-ready.</p>
+              <EmptyState icon="✓" message="No changes needed — this configuration is already hybrid-ready." />
             ) : (
               <div className="diff-list">
                 {result.migration.changes.map((change, index) => (

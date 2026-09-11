@@ -177,6 +177,15 @@ export interface BreakLabRun {
   verdict: { highestSeverity: number; failureModes: string[]; pass: boolean };
 }
 
+// The `breaklab` job's result *is* the signed receipt (src/breaklab/receipt.js
+// createReceipt) — unlike migrate/verify, there is no separate `{ run, receipt }`
+// wrapper; the run lives at `.run` inside the receipt payload itself.
+export interface BreakLabReceipt extends Receipt {
+  engine: { name: string; version: string };
+  scenarioDigest: string;
+  run: BreakLabRun;
+}
+
 export interface BreakLabGridCell {
   client: string;
   server: string;

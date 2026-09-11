@@ -1,15 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PqcForgeClient } from '../api';
 import { useJobRunner } from '../useJobRunner';
 import { DEMO_SCENARIO } from '../fixtures';
-import type { BreakLabRun } from '../types';
-import { ErrorNote, JsonBlock, PassFailBadge, Panel, Spinner } from './common';
+import type { BreakLabReceipt, ReceiptVerification } from '../types';
+import { EmptyState, ErrorNote, JsonBlock, PassFailBadge, Panel, Spinner } from './common';
 
 export function BreakLabTab({ client }: { client: PqcForgeClient | null }) {
   const [budget, setBudget] = useState(32);
   const [seed, setSeed] = useState(42);
   const [showScenario, setShowScenario] = useState(false);
-  const { result, error, running, run } = useJobRunner<BreakLabRun>(client);
+  const [verification, setVerification] = useState<ReceiptVerification | null>(null);
+  // The job result *is* the signed receipt — the run lives at result.run
+  // (see the BreakLabReceipt type). There is no separate { run, receipt }.
+  const { result, error, running, run } = useJobRunner<BreakLabReceipt>(client);
+
+  useEffect(() => {
+    setVerification(null);
+    if (!client || !result) return;
+    client.verifyReceipt(result).then(setVerification).catch(() => setVerification(null));
+  }, [client, result]);
 
   return (
     <div className="tab-grid">
@@ -46,40 +55,43 @@ export function BreakLabTab({ client }: { client: PqcForgeClient | null }) {
 
       {result && (
         <>
-          <Panel title="Verdict">
+          <Panel title="Verdict" tone={result.run.verdict.pass ? undefined : 'critical'}>
             <div className="summary-row">
-              <PassFailBadge pass={result.verdict.pass} passLabel="deployment policy PASS" failLabel="deployment policy FAIL" />
-              <span>highest severity {result.verdict.highestSeverity}</span>
-              <span>winner: <strong className="mono">{result.winner}</strong></span>
+              <PassFailBadge pass={result.run.verdict.pass} passLabel="deployment policy PASS" failLabel="deployment policy FAIL" />
+              <span>highest severity {result.run.verdict.highestSeverity}</span>
+              <span>winner: <strong className="mono">{result.run.winner}</strong></span>
+              {verification && <PassFailBadge pass={verification.valid} passLabel="receipt verified" failLabel="receipt invalid" />}
             </div>
-            <p className="muted">Failure modes: {result.verdict.failureModes.join(', ') || 'none'}</p>
+            <p className="muted">Failure modes: {result.run.verdict.failureModes.join(', ') || 'none'}</p>
           </Panel>
 
-          <Panel title="Strategy comparison (fair, equal budget)">
-            <table>
-              <thead>
-                <tr><th>Strategy</th><th>Evaluations</th><th>State coverage</th><th>Failing</th><th>Max severity</th><th>Failure modes</th><th>Runtime</th></tr>
-              </thead>
-              <tbody>
-                {result.strategies.map((strategy) => (
-                  <tr key={strategy.strategy} className={strategy.strategy === result.winner ? 'winner-row' : undefined}>
-                    <td className="mono">{strategy.strategy}{strategy.strategy === result.winner ? ' ★' : ''}</td>
-                    <td>{strategy.evaluations}</td>
-                    <td>{(strategy.stateCoverage * 100).toFixed(1)}%</td>
-                    <td>{strategy.failingConfigurations}</td>
-                    <td>{strategy.maxSeverity}</td>
-                    <td className="mono">{strategy.uniqueFailureModes.join(', ') || '—'}</td>
-                    <td>{strategy.runtimeMs.toFixed(1)}ms</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <Panel title="Strategy comparison (fair, equal budget)" wide>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Strategy</th><th>Evaluations</th><th>State coverage</th><th>Failing</th><th>Max severity</th><th>Failure modes</th><th>Runtime</th></tr>
+                </thead>
+                <tbody>
+                  {result.run.strategies.map((strategy) => (
+                    <tr key={strategy.strategy} className={strategy.strategy === result.run.winner ? 'winner-row' : undefined}>
+                      <td className="mono">{strategy.strategy}{strategy.strategy === result.run.winner ? ' ★' : ''}</td>
+                      <td>{strategy.evaluations}</td>
+                      <td>{(strategy.stateCoverage * 100).toFixed(1)}%</td>
+                      <td>{strategy.failingConfigurations}</td>
+                      <td>{strategy.maxSeverity}</td>
+                      <td className="mono">{strategy.uniqueFailureModes.join(', ') || '—'}</td>
+                      <td>{strategy.runtimeMs.toFixed(1)}ms</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Panel>
 
-          <Panel title="Minimal counterexamples">
-            {result.counterexamples.length === 0 ? <p className="muted">No failures found at this budget.</p> : (
+          <Panel title="Minimal counterexamples" wide>
+            {result.run.counterexamples.length === 0 ? <EmptyState icon="✓" message="No failures found at this budget." /> : (
               <div className="diff-list">
-                {result.counterexamples.map((example) => (
+                {result.run.counterexamples.map((example) => (
                   <div key={example.failureCode} className="diff-card">
                     <div className="diff-head mono">{example.failureCode} (severity {example.severity})</div>
                     <div className="mono small">

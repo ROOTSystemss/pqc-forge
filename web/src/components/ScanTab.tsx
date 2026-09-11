@@ -4,7 +4,7 @@ import { ApiError } from '../api';
 import { useJobRunner } from '../useJobRunner';
 import { EXAMPLE_WORKSPACES } from '../fixtures';
 import type { ScanReport, WorkspaceFile } from '../types';
-import { ErrorNote, Panel, SeverityBadge, Spinner } from './common';
+import { EmptyState, ErrorNote, Panel, SeverityBadge, SeverityBar, Spinner } from './common';
 import { WorkspaceEditor } from './WorkspaceEditor';
 
 export function ScanTab({ client }: { client: PqcForgeClient | null }) {
@@ -47,9 +47,10 @@ export function ScanTab({ client }: { client: PqcForgeClient | null }) {
       </Panel>
 
       <Panel title="Findings">
-        {!result && <p className="muted">Run a scan to see findings here.</p>}
+        {!result && <EmptyState icon="⌕" message="Run a scan to see findings here." />}
         {result && (
           <>
+            <SeverityBar counts={result.summary} />
             <div className="summary-row">
               <span>{result.filesScanned} files scanned</span>
               <span className="badge critical">{result.summary.critical} critical</span>
@@ -59,24 +60,26 @@ export function ScanTab({ client }: { client: PqcForgeClient | null }) {
               <span className="muted">{result.summary.automatable} automatable, {result.summary.suppressed} suppressed</span>
             </div>
             {result.findings.length === 0 ? (
-              <p className="muted">No findings — this configuration looks clean.</p>
+              <EmptyState icon="✓" message="No findings — this configuration looks clean." />
             ) : (
-              <table>
-                <thead>
-                  <tr><th>Severity</th><th>Rule</th><th>Location</th><th>Reason</th><th>Remediation</th></tr>
-                </thead>
-                <tbody>
-                  {result.findings.map((finding, index) => (
-                    <tr key={index}>
-                      <td><SeverityBadge severity={finding.severity} /></td>
-                      <td className="mono">{finding.id}</td>
-                      <td className="mono">{finding.file}:{finding.line}</td>
-                      <td>{finding.reason}</td>
-                      <td>{finding.remediation}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Severity</th><th>Rule</th><th>Location</th><th>Reason</th><th>Remediation</th></tr>
+                  </thead>
+                  <tbody>
+                    {result.findings.map((finding, index) => (
+                      <tr key={index}>
+                        <td><SeverityBadge severity={finding.severity} /></td>
+                        <td className="mono">{finding.id}</td>
+                        <td className="mono">{finding.file}:{finding.line}</td>
+                        <td>{finding.reason}</td>
+                        <td>{finding.remediation}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </>
         )}
