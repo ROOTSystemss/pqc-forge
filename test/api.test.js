@@ -338,3 +338,100 @@ test('a job left "running" by a killed process is reconciled to failed on the ne
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('GET /v1/jobs lists only the caller\'s own jobs, newest first, filterable by type and status', async () => {
+  const ctx = await startServer();
+  try {
+    const tenant = await newTenant(ctx.apiHome);
+    const other = await newTenant(ctx.apiHome, 'Other');
+
+    const jobIds = [];
+    for (const budget of [4, 8]) {
+      const submit = await fetch(`${ctx.base}/v1/jobs`, {
+        method: 'POST', headers: tenant.headers,
+        body: JSON.stringify({ type: 'breaklab', params: { scenario: demoScenario, budget, seed: 1 } })
+      });
+      const { jobId } = await submit.json();
+      jobIds.push(jobId);
+      await pollJob(ctx.base, tenant.headers, jobId);
+    }
+    // A job belonging to a different tenant must never appear in this list.
+    const otherSubmit = await fetch(`${ctx.base}/v1/jobs`, {
+      method: 'POST', headers: other.headers,
+      body: JSON.stringify({ type: 'breaklab', params: { scenario: demoScenario, budget: 4, seed: 1 } })
+    });
+    await pollJob(ctx.base, other.headers, (await otherSubmit.json()).jobId);
+
+    const listed = await (await fetch(`${ctx.base}/v1/jobs`, { headers: tenant.headers })).json();
+    assert.equal(listed.total, 2);
+    assert.deepEqual(listed.jobs.map((job) => job.jobId), [...jobIds].reverse());
+    assert.ok(listed.jobs.every((job) => job.tenantId === tenant.tenantId));
+
+    const limited = await (await fetch(`${ctx.base}/v1/jobs?limit=1`, { headers: tenant.headers })).json();
+    assert.equal(limited.jobs.length, 1);
+    assert.equal(limited.total, 2);
+
+    const wrongType = await (await fetch(`${ctx.base}/v1/jobs?type=scan`, { headers: tenant.headers })).json();
+    assert.equal(wrongType.total, 0);
+
+    const noAuth = await fetch(`${ctx.base}/v1/jobs`);
+    assert.equal(noAuth.status, 401);
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('CORS headers allow a browser dashboard to call the API from another origin', async () => {
+  const ctx = await startServer();
+  try {
+    const preflight = await fetch(`${ctx.base}/v1/jobs`, {
+      method: 'OPTIONS', headers: { 'access-control-request-method': 'POST', origin: 'http://localhost:5173' }
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), '*');
+    assert.match(preflight.headers.get('access-control-allow-headers') ?? '', /authorization/);
+
+    const health = await fetch(`${ctx.base}/v1/health`);
+    assert.equal(health.headers.get('access-control-allow-origin'), '*');
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('the built dashboard is served from the same origin, with SPA fallback, and never shadows the /v1 API', async () => {
+  const webDistPath = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-web-dist-'));
+  await fs.writeFile(path.join(webDistPath, 'index.html'), '<!doctype html><title>PQC Forge</title>');
+  await fs.mkdir(path.join(webDistPath, 'assets'), { recursive: true });
+  await fs.writeFile(path.join(webDistPath, 'assets', 'app.js'), 'console.log("app")');
+
+  const apiHome = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-api-webdist-'));
+  const { server } = createApiServer({ apiHome, webDistPath });
+  await new Promise((resolve) => server.listen(0, resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const root = await fetch(`${base}/`);
+    assert.equal(root.status, 200);
+    assert.match(await root.text(), /PQC Forge/);
+
+    const asset = await fetch(`${base}/assets/app.js`);
+    assert.equal(asset.status, 200);
+    assert.match(asset.headers.get('content-type') ?? '', /javascript/);
+    assert.match(await asset.text(), /console\.log/);
+
+    // A client-side route with no matching file falls back to index.html
+    // so a hard refresh on a deep link still loads the app shell.
+    const deepLink = await fetch(`${base}/jobs/j_deadbeefdeadbeef`);
+    assert.equal(deepLink.status, 200);
+    assert.match(await deepLink.text(), /PQC Forge/);
+
+    // Static serving must never shadow the real API: an unauthenticated
+    // /v1/ request still gets the API's own 401, not the app shell.
+    const apiRoute = await fetch(`${base}/v1/jobs`, { method: 'POST', body: '{}' });
+    assert.equal(apiRoute.status, 401);
+
+    const traversal = await fetch(`${base}/..%2f..%2fetc%2fpasswd`);
+    assert.equal(traversal.status, 404); // resolveStaticFile refuses the escape outright, no SPA fallback
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

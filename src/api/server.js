@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { CONTENT_TYPES, resolveStaticFile } from './static.js';
 import { authenticate, createTenant, tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { createWorkspace, workspaceExists } from './workspace.js';
 import { createJobQueue, JOB_TYPES } from './jobs.js';
@@ -58,7 +59,7 @@ class HttpError extends Error {
  * authenticated request to another tenant's data or to an arbitrary host
  * path.
  */
-export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers } = {}) {
+export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, webDistPath = null } = {}) {
   if (!apiHome) throw new Error('createApiServer requires apiHome.');
   const resolveSigningKey = async () => (await loadSigningKey(signingKeyPath)).key;
   const queue = createJobQueue({
@@ -126,6 +127,17 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       }
     },
     {
+      method: 'GET', pattern: /^\/v1\/jobs$/,
+      handler: async (req, res, params, body, tenant) => {
+        const url = new URL(req.url, 'http://internal');
+        return queue.listJobs(tenant.tenantId, {
+          limit: url.searchParams.get('limit') ?? undefined,
+          status: url.searchParams.get('status') ?? null,
+          type: url.searchParams.get('type') ?? null
+        });
+      }
+    },
+    {
       method: 'GET', pattern: /^\/v1\/jobs\/([^/]+)$/,
       handler: async (req, res, [jobId], body, tenant) => {
         const record = await queue.getJob(tenant.tenantId, jobId);
@@ -154,12 +166,34 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     }
   ];
 
+  const resolvedWebDist = webDistPath ? path.resolve(webDistPath) : null;
+
   const server = createServer(async (req, res) => {
+    // Permissive CORS: the dashboard authenticates with a bearer API key in
+    // a header, never a cookie, so there is no ambient credential for a
+    // third-party origin to ride along with — `*` here does not widen what
+    // a caller can do, only where a browser will let a script call from.
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
     try {
       await ensureReconciled();
       const url = new URL(req.url, 'http://internal');
       const route = routes.find((candidate) => candidate.method === req.method && candidate.pattern.test(url.pathname));
-      if (!route) { send(res, 404, { error: 'Not found.' }); return; }
+      if (!route) {
+        if (req.method === 'GET' && resolvedWebDist && !url.pathname.startsWith('/v1/')) {
+          const file = await resolveStaticFile(resolvedWebDist, url.pathname);
+          if (file) {
+            const data = await fs.readFile(file);
+            res.writeHead(200, { 'content-type': CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream' });
+            res.end(data);
+            return;
+          }
+        }
+        send(res, 404, { error: 'Not found.' });
+        return;
+      }
       const match = route.pattern.exec(url.pathname);
       const tenant = route.public ? null : await requireTenant(req);
       const body = req.method === 'GET' ? {} : await readJsonBody(req);

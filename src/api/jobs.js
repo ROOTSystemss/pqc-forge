@@ -306,6 +306,30 @@ export function createJobQueue({
     }
   }
 
+  /**
+   * List a tenant's own jobs, newest first. There is no separate index —
+   * job.json files are the only source of truth, so this reads every job
+   * directory the tenant has. That is fine at the scale a single tenant
+   * directory holds (job history a dashboard would page through, not an
+   * unbounded event log); an operator running this at a much larger scale
+   * would want a real index instead of directory-scan-on-every-request.
+   */
+  async function listJobs(tenantId, { limit = 50, status = null, type = null } = {}) {
+    const dir = tenantJobsDirectory(apiHome, tenantId);
+    let jobIds;
+    try {
+      jobIds = await fs.readdir(dir);
+    } catch (error) {
+      if (error.code === 'ENOENT') return { jobs: [], total: 0 };
+      throw error;
+    }
+    const records = (await Promise.all(jobIds.map((jobId) => getJob(tenantId, jobId)))).filter(Boolean);
+    records.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    const filtered = records.filter((record) => (!status || record.status === status) && (!type || record.type === type));
+    const capped = Math.min(Math.max(1, Number(limit) || 50), 200);
+    return { jobs: filtered.slice(0, capped), total: filtered.length };
+  }
+
   async function getResult(tenantId, jobId) {
     try {
       return JSON.parse(await fs.readFile(path.join(jobDirectory(apiHome, tenantId, jobId), 'result.json'), 'utf8'));
@@ -348,5 +372,5 @@ export function createJobQueue({
     schedule();
   }
 
-  return { submit, getJob, getResult, reconcile, stats: () => ({ pending: pending.length, running: running.size }) };
+  return { submit, getJob, getResult, listJobs, reconcile, stats: () => ({ pending: pending.length, running: running.size }) };
 }
