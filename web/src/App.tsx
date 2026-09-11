@@ -3,6 +3,7 @@ import { PqcForgeClient } from './api';
 import type { HealthResponse } from './types';
 import { useTheme } from './useTheme';
 import { ThemeToggle } from './components/ThemeToggle';
+import { LatticeBackground } from './components/LatticeBackground';
 import { ConnectPanel } from './components/ConnectPanel';
 import { ScanTab } from './components/ScanTab';
 import { MigrateTab } from './components/MigrateTab';
@@ -65,6 +66,7 @@ export default function App() {
   if (!client) {
     return (
       <div className="app">
+        <LatticeBackground />
         <AppHeader health={null} onDisconnect={null} theme={theme} onThemeChange={setTheme} />
         <ConnectPanel initialBaseUrl={readStorage(STORAGE_BASE_URL) || 'http://localhost:8787'} initialApiKey={readStorage(STORAGE_API_KEY)} onConnect={handleConnect} />
       </div>
@@ -73,6 +75,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <LatticeBackground />
       <AppHeader health={health} onDisconnect={handleDisconnect} theme={theme} onThemeChange={setTheme} />
       <nav className="tabs">
         <div className="tabs-track">

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.2
+
+A full visual redesign of the dashboard around a distinct identity ("Lattice") instead of a generic admin-dashboard look, on the theory that a product about lattice cryptography should look like one.
+
+- Added `LatticeBackground.tsx`: a live, continuously animated mesh of points and edges behind every screen — points sit on a jittered grid connected to fixed lattice neighbors (O(n) per frame, not a nearest-neighbor search), with pulses traveling along random edges. Theme-aware (reads CSS custom properties), respects `prefers-reduced-motion`, and pauses when the tab is hidden.
+- Replaced the BreakLab Grid's table with `NetworkGrid.tsx`: the client×server compatibility matrix as an actual node-link diagram — a curved, glowing edge per pair that draws itself in with a traveling particle the instant that pair's cell resolves, colored by pass/fail, pending pairs shown as faint dashed threads. Margins size themselves from the longest actual label so nothing clips against the panel.
+- New color system and glass-panel visual language across every tab (`index.css`, `App.css`), a redesigned header/nav/connect screen, and an animated strategy-coverage comparison on the BreakLab tab.
+- Fixed a real crash the redesign's own automated verification caught: a browser resize while a lattice pulse was mid-flight indexed the freshly rebuilt (differently-shaped) point grid out of bounds. In-flight pulses are now cleared on every rebuild.
+
 ## 0.11.1
 
 Hardening pass across the REST API, found by auditing the whole surface rather than reviewing a diff.

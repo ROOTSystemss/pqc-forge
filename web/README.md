@@ -47,7 +47,10 @@ works too.
   annealing, adaptive) against the bundled demo scenario and see the verdict,
   strategy comparison, and minimal counterexamples.
 - **BreakLab Grid** — the same scenario's full client×server matrix,
-  evaluated exhaustively and rendered live as each cell resolves.
+  evaluated exhaustively and rendered as an actual network diagram
+  (`NetworkGrid.tsx`): a curved edge per pair that draws itself in — with a
+  traveling pulse — the instant that cell resolves, colored by pass/fail,
+  rather than a table filling in.
 - **Jobs** — this tenant's own job history, polled from `GET /v1/jobs`.
 - **Verify Receipt** — paste any PQC Forge receipt JSON and check its
   signature and digest.
@@ -71,6 +74,18 @@ into a dev tool, a webhook secret in a form). If that tradeoff doesn't fit
 your deployment, don't rely on it: proxy the dashboard behind an
 authentication layer of your own instead of handing tenant keys to browsers
 at all.
+
+## Design: "Lattice"
+
+The visual identity is built around what the product actually protects:
+Module-Lattice cryptography (ML-KEM, ML-DSA). `LatticeBackground.tsx` renders
+a live mesh of points and edges behind every screen — points sit on a
+jittered grid connected to their fixed lattice neighbors (not a nearest-
+neighbor search, which is both the more accurate picture and O(n) per frame
+instead of O(n²)) — with occasional pulses traveling along a random edge.
+Panels are glass over that mesh; `index.css` carries the full light/dark
+token set. It reads `prefers-reduced-motion` and goes fully static, and
+pauses entirely when the tab isn't visible.
 
 ---
 

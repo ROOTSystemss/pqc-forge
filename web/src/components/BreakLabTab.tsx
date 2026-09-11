@@ -66,6 +66,17 @@ export function BreakLabTab({ client }: { client: PqcForgeClient | null }) {
           </Panel>
 
           <Panel title="Strategy comparison (fair, equal budget)" wide>
+            <div className="strategy-bars">
+              {result.run.strategies.map((strategy) => (
+                <div key={strategy.strategy} className="strategy-bar-row">
+                  <span className="mono small strategy-bar-label">{strategy.strategy}{strategy.strategy === result.run.winner ? ' ★' : ''}</span>
+                  <div className="strategy-bar-track">
+                    <div className="strategy-bar-fill" style={{ width: `${strategy.stateCoverage * 100}%` }} />
+                  </div>
+                  <span className="mono small">{(strategy.stateCoverage * 100).toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
             <div className="table-wrap">
               <table>
                 <thead>
