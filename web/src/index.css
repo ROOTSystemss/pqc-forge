@@ -253,7 +253,13 @@ label {
 }
 
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td { text-align: left; padding: 10px 11px; border-bottom: 1px solid var(--panel-border); vertical-align: top; overflow-wrap: anywhere; }
+/* break-word, not anywhere: anywhere also shrinks a column's *minimum*
+   width toward zero during table layout, so short unbreakable cells
+   (a "MEDIUM" badge, "nginx.conf:4") get squeezed to a sliver and
+   sliced mid-word instead of the table widening for .table-wrap's
+   horizontal scroll to handle. break-word only breaks a word as a
+   last resort, once its column already has no room left. */
+th, td { text-align: left; padding: 10px 11px; border-bottom: 1px solid var(--panel-border); vertical-align: top; overflow-wrap: break-word; }
 th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.06em; white-space: nowrap; }
 tbody tr { transition: background 140ms ease; }
 tbody tr:hover { background: var(--panel-border); }
