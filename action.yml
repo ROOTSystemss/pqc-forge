@@ -89,6 +89,9 @@ runs:
           echo "mode must be scan, breaklab, runtime, or staging" >&2
           exit 64
         fi
+    - name: Install PQC Forge dependencies
+      shell: bash
+      run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
     - name: Run PQC repository gate
       if: inputs.mode == 'scan'
       shell: bash

@@ -24,3 +24,13 @@ test('composite action exposes scan, BreakLab, runtime, and staging gates withou
   assert.match(action, /--report/);
   assert.doesNotMatch(action, /run:.*\$\{\{ inputs\./);
 });
+
+test('composite action installs its own dependencies before any mode runs', async () => {
+  // The CLI imports @noble/post-quantum at load time, so a consuming repository without this step
+  // fails with ERR_MODULE_NOT_FOUND before scanning anything.
+  const action = await fs.readFile(path.join(root, 'action.yml'), 'utf8');
+  const install = action.indexOf('npm ci --omit=dev');
+  assert.ok(install > 0, 'action must run npm ci for its own package');
+  assert.match(action, /npm ci --omit=dev --ignore-scripts[^\n]*--prefix "\$GITHUB_ACTION_PATH"/);
+  assert.ok(install < action.indexOf("inputs.mode == 'scan'"), 'install must precede the first mode step');
+});
