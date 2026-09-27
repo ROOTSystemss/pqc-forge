@@ -143,3 +143,27 @@ test('audited suppressions hide matching findings only until expiry', async () =
   assert.equal(expired.summary.total, 1);
   assert.equal(expired.summary.suppressed, 0);
 });
+
+test('scanner finds the elliptic-curve and RSA forms Node and JWT code actually uses', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-node-jwt-'));
+  const cases = {
+    'jwt.js': "const header = { alg: 'ES256', typ: 'JWT' };\n",
+    'keys.js': "crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });\n",
+    'ed.js': "const pair = crypto.generateKeyPairSync('ed25519');\n",
+    'jwk.json': '{ "kty": "EC", "crv": "P-384" }\n',
+    'rsa-jwt.js': "jwt.sign(payload, key, { algorithm: 'RS256' });\n",
+    'rsa-async.js': "crypto.generateKeyPair('rsa', { modulusLength: 2048 }, cb);\n",
+  };
+  for (const [name, body] of Object.entries(cases)) await fs.writeFile(path.join(root, name), body);
+  const report = await scanRepository(root);
+  const flagged = (file, id) => report.findings.some((f) => path.basename(f.file) === file && f.id === id);
+  for (const file of ['jwt.js', 'keys.js', 'ed.js', 'jwk.json']) assert.equal(flagged(file, 'QF-ALG-ECC'), true, file);
+  for (const file of ['rsa-jwt.js', 'rsa-async.js']) assert.equal(flagged(file, 'QF-ALG-RSA'), true, file);
+});
+
+test('scanner does not flag hybrid post-quantum groups or ML-DSA', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-pq-clean-'));
+  await fs.writeFile(path.join(root, 'pq.js'), "const groups = 'X25519MLKEM768';\nconst algorithm = 'ML-DSA-65';\n");
+  const report = await scanRepository(root);
+  assert.equal(report.findings.some((f) => f.id === 'QF-ALG-ECC' || f.id === 'QF-ALG-RSA'), false);
+});
