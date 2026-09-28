@@ -8,8 +8,26 @@ import { createJobQueue, JOB_TYPES } from './jobs.js';
 import { verifyReceipt } from '../breaklab/receipt.js';
 import { loadSigningKey } from '../signing.js';
 import { VERSION } from '../version.js';
+import { publicCatalog, SELF_SERVE_PLANS, INTERVALS } from '../billing/plans.js';
+import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent } from '../billing/entitlements.js';
+import { checkoutProvider, providerByName } from '../billing/providers.js';
+import { loadTenant } from './tenants.js';
 
 const MAX_BODY_BYTES = 68 * 1024 * 1024; // above the 64 MiB workspace cap, plus headroom for JSON overhead
+
+function readRawBody(req, limit = 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let bytes = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      bytes += chunk.length;
+      if (bytes > limit) { reject(Object.assign(new Error('Request body too large.'), { statusCode: 413 })); req.destroy(); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -59,7 +77,7 @@ class HttpError extends Error {
  * authenticated request to another tenant's data or to an arbitrary host
  * path.
  */
-export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, webDistPath = null } = {}) {
+export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, webDistPath = null, billingEnv = process.env, fetchImpl = globalThis.fetch } = {}) {
   if (!apiHome) throw new Error('createApiServer requires apiHome.');
   const resolveSigningKey = async () => (await loadSigningKey(signingKeyPath)).key;
   const queue = createJobQueue({
@@ -157,6 +175,62 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         return result;
       }
     },
+    // ---------- subscription ----------
+    {
+      method: 'GET', pattern: /^\/v1\/plans$/, public: true,
+      handler: async () => ({ ...publicCatalog(), checkoutAvailable: Boolean(checkoutProvider(billingEnv, fetchImpl)?.configured()) })
+    },
+    {
+      method: 'GET', pattern: /^\/v1\/subscription$/,
+      handler: async (req, res, params, body, tenant) => entitlement(apiHome, tenant.tenantId)
+    },
+    {
+      method: 'POST', pattern: /^\/v1\/billing\/checkout$/,
+      handler: async (req, res, params, body, tenant) => {
+        const provider = checkoutProvider(billingEnv, fetchImpl);
+        if (!provider || !provider.configured()) throw new HttpError(503, 'Checkout is not available yet. Contact RootSystems to buy a plan.');
+        const item = body.item === 'report' ? 'report' : `${body.plan}:${body.interval ?? 'month'}`;
+        if (item !== 'report' && (!SELF_SERVE_PLANS.includes(body.plan) || !INTERVALS.includes(body.interval ?? 'month'))) throw new HttpError(400, 'Choose plan "pro" or "team" and interval "month" or "year", or item "report".');
+        const quantity = Math.min(500, Math.max(1, Number.parseInt(body.quantity ?? 1, 10) || 1));
+        const returnUrl = typeof body.returnUrl === 'string' && /^https:\/\//.test(body.returnUrl) ? body.returnUrl : (billingEnv.PQC_FORGE_PUBLIC_URL || 'https://rootsystems.app/pricing');
+        try {
+          return await provider.createCheckout({ tenantId: tenant.tenantId, item, quantity, returnUrl });
+        } catch (error) {
+          throw new HttpError(502, error.message);
+        }
+      }
+    },
+    {
+      method: 'POST', pattern: /^\/v1\/billing\/webhook\/([a-z]+)$/, public: true, raw: true,
+      handler: async (req, res, [providerName], rawBody) => {
+        const provider = providerByName(providerName, billingEnv, fetchImpl);
+        if (!provider || !provider.configured()) throw new HttpError(404, 'Unknown billing provider.');
+        let event;
+        try { event = provider.verifyWebhook(rawBody, req.headers); } catch (error) { throw new HttpError(400, error.message); }
+        const normalized = provider.normalize(event);
+        if (!normalized) return { received: true, applied: false, reason: 'event not relevant to PQC Forge' };
+        if (!(await loadTenant(apiHome, normalized.tenantId))) return { received: true, applied: false, reason: 'unknown account' };
+        if (!(await claimEvent(apiHome, provider.name, normalized.eventId))) return { received: true, applied: false, reason: 'duplicate delivery' };
+        const result = await applySubscriptionEvent(apiHome, normalized.tenantId, normalized);
+        return { received: true, ...result };
+      }
+    },
+    {
+      method: 'POST', pattern: /^\/v1\/gate\/check$/,
+      handler: async (req, res, params, body, tenant) => {
+        try {
+          return await checkRepository(apiHome, tenant.tenantId, { repo: body.repo, isPrivate: body.private === true });
+        } catch (error) {
+          throw new HttpError(400, error.message);
+        }
+      }
+    },
+    {
+      method: 'POST', pattern: /^\/v1\/gate\/release$/,
+      handler: async (req, res, params, body, tenant) => {
+        try { return await releaseRepository(apiHome, tenant.tenantId, body.repo); } catch (error) { throw new HttpError(400, error.message); }
+      }
+    },
     {
       method: 'POST', pattern: /^\/v1\/verify-receipt$/,
       handler: async (req, res, params, body) => {
@@ -180,7 +254,7 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     // third-party origin to ride along with — `*` here does not widen what
     // a caller can do, only where a browser will let a script call from.
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type');
+    res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type, webhook-id, webhook-timestamp, webhook-signature');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
     try {
@@ -202,12 +276,12 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       }
       const match = route.pattern.exec(url.pathname);
       const tenant = route.public ? null : await requireTenant(req);
-      const body = req.method === 'GET' ? {} : await readJsonBody(req);
+      const body = req.method === 'GET' ? {} : route.raw ? await readRawBody(req) : await readJsonBody(req);
       const result = await route.handler(req, res, match.slice(1), body, tenant);
       send(res, route.status ?? 200, result);
     } catch (error) {
       const statusCode = error.statusCode ?? 500;
-      if (statusCode >= 500) {
+      if (statusCode >= 500 && !(error instanceof HttpError)) {
         // Never leak internals of an unexpected failure to the caller.
         console.error(error);
         send(res, 500, { error: 'Internal server error.' });

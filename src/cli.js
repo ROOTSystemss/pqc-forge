@@ -18,6 +18,7 @@ import { createContainerRunner, writeRuntimeEvidence } from './runtime-probe.js'
 import { writeStagingEvidence } from './staging-gate.js';
 import { generateSigningKey, loadSigningKey, publicKeyDocument } from './signing.js';
 import { provisionTenant } from './api/server.js';
+import { setManualPlan, entitlement } from './billing/entitlements.js';
 
 const HELP = `PQC Forge — repository-to-patch migration evidence
 
@@ -36,6 +37,8 @@ Usage:
   pqc-forge keygen --out <directory> [--json]
   pqc-forge verify-receipt <receipt.json> [--trusted-key file]... [--json]
   pqc-forge tenant-create --name <name> --out <api-data-directory> [--json]
+  pqc-forge plan-set <tenant-id> --plan <community|pro|team|selfhosted> --out <api-data-directory> [--quantity n] [--until YYYY-MM-DD] [--json]
+  pqc-forge gate-check --repo <owner/name> [--private] [--api-url url] [--json]   (reads PQC_FORGE_API_KEY)
 
 Commands:
   scan      Find quantum-vulnerable crypto with file/line evidence.
@@ -52,6 +55,8 @@ Commands:
   keygen    Generate an ML-DSA-65 signing identity for evidence receipts.
   verify-receipt  Verify a PQC Forge receipt's SHA-256 digest and ML-DSA signature.
   tenant-create  Provision a new API tenant and print its API key once.
+  plan-set  Set an invoiced plan (self-hosted, or paid outside checkout) for a tenant.
+  gate-check  Ask the PQC Forge API whether this repository is covered by the key's plan.
 
 Signing:
   Every receipt PQC Forge writes is ML-DSA-65 signed as well as SHA-256
@@ -127,7 +132,7 @@ export async function run(args) {
     console.log(HELP);
     return;
   }
-  if (!target && !['protocol-lab', 'doctor', 'keygen', 'tenant-create'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
+  if (!target && !['protocol-lab', 'doctor', 'keygen', 'tenant-create', 'gate-check'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
 
   const json = args.includes('--json');
   const signingKeyOption = optionValue(args, '--signing-key', null);
@@ -157,6 +162,33 @@ export async function run(args) {
       console.log(`Public key (safe to distribute as a trust root): ${publicPath}`);
       console.log('Set PQC_FORGE_SIGNING_KEY to this secret key path, or pass --signing-key, to sign receipts with it.');
     }
+    return;
+  }
+  if (command === 'plan-set') {
+    const outValue = optionValue(args, '--out', null);
+    const plan = optionValue(args, '--plan', null);
+    if (!outValue || !plan) throw new Error('plan-set requires <tenant-id> --plan <plan> --out <api-data-directory>.');
+    const until = optionValue(args, '--until', null);
+    if (until && !/^d{4}-d{2}-d{2}$/.test(until)) throw new Error('--until must be YYYY-MM-DD.');
+    const quantity = Number.parseInt(optionValue(args, '--quantity', '1'), 10) || 1;
+    await setManualPlan(path.resolve(outValue), target, { plan, quantity, until: until ? `${until}T23:59:59.000Z` : null });
+    const ent = await entitlement(path.resolve(outValue), target);
+    if (json) console.log(JSON.stringify(ent, null, 2));
+    else console.log(`Tenant ${target} is on ${ent.plan} (${ent.status}), repositories ${ent.reposInUse}/${ent.repoLimit ?? 'unlimited'}.`);
+    return;
+  }
+  if (command === 'gate-check') {
+    const repo = optionValue(args, '--repo', null);
+    const apiUrl = optionValue(args, '--api-url', process.env.PQC_FORGE_API_URL || null);
+    const apiKey = process.env.PQC_FORGE_API_KEY || '';
+    if (!repo) throw new Error('gate-check requires --repo <owner/name>.');
+    if (!apiUrl) throw new Error('gate-check requires --api-url or PQC_FORGE_API_URL.');
+    if (!apiKey) throw new Error('gate-check requires PQC_FORGE_API_KEY.');
+    const response = await fetch(new URL('/v1/gate/check', apiUrl), { method: 'POST', headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ repo, private: args.includes('--private') }) });
+    const result = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    if (json) console.log(JSON.stringify(result, null, 2));
+    else console.log(result.allowed ? `PQC Forge ${result.plan} plan covers ${repo} (${result.reason}).` : `PQC Forge: ${result.reason ?? result.error ?? 'not allowed'}`);
+    if (!response.ok || !result.allowed) process.exitCode = 3;
     return;
   }
   if (command === 'tenant-create') {
