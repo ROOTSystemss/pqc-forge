@@ -40,11 +40,11 @@ test('plans are public and annual billing is ten months', async () => {
   const plans = await (await fetch(`${ctx.base}/v1/plans`)).json();
   const pro = plans.plans.find((p) => p.id === 'pro');
   const team = plans.plans.find((p) => p.id === 'team');
-  assert.equal(pro.priceUsdMonthly, 39);
-  assert.equal(pro.priceUsdYearly, 390);
-  assert.equal(team.priceUsdMonthly, 249);
-  assert.equal(team.priceUsdYearly, 2490);
-  assert.equal(plans.oneTime[0].priceUsdOnce, 499);
+  assert.equal(pro.priceUsdMonthly, 49);
+  assert.equal(pro.priceUsdYearly, 490);
+  assert.equal(team.priceUsdMonthly, 399);
+  assert.equal(team.priceUsdYearly, 3990);
+  assert.equal(plans.oneTime[0].priceUsdOnce, 1500);
   assert.equal(plans.checkoutAvailable, true);
   await ctx.close();
 });

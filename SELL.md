@@ -23,9 +23,11 @@ No sales call is required for the CLI or GitHub tiers.
 ## Launch pricing hypothesis
 
 - Community: free local scans and one public repository.
-- Pro: $39 per repository per month for private scans, migration pull requests, and evidence history.
-- Team: $249 per month for 20 repositories, policy gates, and shared evidence.
-- Self-hosted: from $6,000 per year, including offline evidence export.
+- Pro: $49 per repository per month for private scans, migration pull requests, and evidence history.
+- Team: $399 per month for 20 repositories, policy gates, and shared evidence.
+- Business: $999 per month for 75 repositories, company sign-in and priority support (invoiced).
+- Self-hosted: from $12,000 per year, including offline evidence export.
+- Readiness report: $1,500 once; the customer runs the scan and we sign the findings.
 
 These are launch prices to test through checkout conversion, not claims about willingness to pay.
 

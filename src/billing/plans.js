@@ -14,7 +14,7 @@ export const PLANS = {
   pro: {
     id: 'pro',
     name: 'Pro',
-    priceUsdMonthly: 39,
+    priceUsdMonthly: 49,
     perRepo: true,
     repoLimit: null, // equals the quantity bought
     privateRepos: true,
@@ -23,15 +23,24 @@ export const PLANS = {
   team: {
     id: 'team',
     name: 'Team',
-    priceUsdMonthly: 249,
+    priceUsdMonthly: 399,
     repoLimit: 20,
     privateRepos: true,
     features: ['20 repositories', 'Policy gates', 'Shared evidence', 'Everything in Pro']
   },
+  business: {
+    id: 'business',
+    name: 'Business',
+    priceUsdMonthly: 999,
+    invoiced: true,
+    repoLimit: 75,
+    privateRepos: true,
+    features: ['75 repositories', 'Company sign-in', 'Priority support', 'Everything in Team']
+  },
   selfhosted: {
     id: 'selfhosted',
     name: 'Self-hosted',
-    priceUsdYearly: 6000,
+    priceUsdYearly: 12000,
     invoiced: true,
     repoLimit: null, // set per contract
     privateRepos: true,
@@ -40,7 +49,7 @@ export const PLANS = {
 };
 
 // One-time purchase: a signed readiness report the customer generates themselves.
-export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 499, credits: 1 };
+export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 1500, credits: 1 };
 
 export const INTERVALS = ['month', 'year'];
 export const SELF_SERVE_PLANS = ['pro', 'team'];

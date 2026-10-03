@@ -130,7 +130,7 @@ export async function releaseRepository(apiHome, tenantId, repo) {
   return { released: repos.fingerprints.length < before };
 }
 
-/** Spend one report credit (the self-serve $499 readiness report). */
+/** Spend one report credit (the self-serve readiness report). */
 export async function useReportCredit(apiHome, tenantId) {
   const file = path.join(tenantDir(apiHome, tenantId), 'subscription.json');
   const sub = await readJson(file, null);
