@@ -40,7 +40,7 @@ export const PLANS = {
   selfhosted: {
     id: 'selfhosted',
     name: 'Self-hosted',
-    priceUsdYearly: 12000,
+    priceUsdYearly: 18000,
     invoiced: true,
     repoLimit: null, // set per contract
     privateRepos: true,
@@ -49,7 +49,7 @@ export const PLANS = {
 };
 
 // One-time purchase: a signed readiness report the customer generates themselves.
-export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 1500, credits: 1 };
+export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 2500, credits: 1 };
 
 export const INTERVALS = ['month', 'year'];
 export const SELF_SERVE_PLANS = ['pro', 'team'];

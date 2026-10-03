@@ -26,8 +26,9 @@ No sales call is required for the CLI or GitHub tiers.
 - Pro: $49 per repository per month for private scans, migration pull requests, and evidence history.
 - Team: $399 per month for 20 repositories, policy gates, and shared evidence.
 - Business: $999 per month for 75 repositories, company sign-in and priority support (invoiced).
-- Self-hosted: from $12,000 per year, including offline evidence export.
-- Readiness report: $1,500 once; the customer runs the scan and we sign the findings.
+- Self-hosted: from $18,000 per year, including offline evidence export.
+- Readiness report: $2,500 once; the customer runs the scan and we sign the findings. It doubles as the PCI DSS 4.0.1 requirement 12.3.3 cryptographic inventory.
+- Migration pilot: from $12,000, a 4-week fixed scope on staging (invoiced).
 
 These are launch prices to test through checkout conversion, not claims about willingness to pay.
 

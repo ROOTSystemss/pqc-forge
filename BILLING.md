@@ -10,8 +10,8 @@ Status: built on branch `subscription`, **not deployed**. No live products exist
 | Pro | $49 per repository / month ($490 / year) | Private repositories, CI gate, migration PRs, evidence history |
 | Team | $399 / month ($3,990 / year) | 20 repositories, policy gates, shared evidence |
 | Business | $999 / month, invoiced | 75 repositories, company sign-in, priority support; set with `pqc-forge plan-set` |
-| Self-hosted | from $12,000 / year, invoiced | Set by an operator with `pqc-forge plan-set` |
-| Readiness report | $1,500 once | One credit for a signed readiness report the customer generates |
+| Self-hosted | from $18,000 / year, invoiced | Set by an operator with `pqc-forge plan-set` |
+| Readiness report | $2,500 once | One credit for a signed readiness report the customer generates |
 
 Annual billing is ten months' price (two months free). Source of truth: `src/billing/plans.js`.
 
@@ -42,7 +42,7 @@ Checkout stays off (HTTP 503 with a plain message) until all five products and b
 ## Before going live (blockers)
 
 1. **Export control.** PQC Forge is cryptographic software. Get an export-classification review before selling outside the US and EU, and block sanctioned countries at checkout (see SELL.md).
-2. **Dodo product type.** Confirm with Dodo that the $1,500 self-serve report counts as a digital product, not a service. Dodo does not allow services.
+2. **Dodo product type.** Confirm with Dodo that the $2,500 self-serve report counts as a digital product, not a service. Dodo does not allow services.
 3. **Hosting.** The API binds to loopback by default and needs a TLS-terminating host before `api_url` can be published in the Action.
 
 ## Tests

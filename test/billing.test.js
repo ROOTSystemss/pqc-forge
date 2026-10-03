@@ -44,7 +44,7 @@ test('plans are public and annual billing is ten months', async () => {
   assert.equal(pro.priceUsdYearly, 490);
   assert.equal(team.priceUsdMonthly, 399);
   assert.equal(team.priceUsdYearly, 3990);
-  assert.equal(plans.oneTime[0].priceUsdOnce, 1500);
+  assert.equal(plans.oneTime[0].priceUsdOnce, 2500);
   assert.equal(plans.checkoutAvailable, true);
   await ctx.close();
 });
