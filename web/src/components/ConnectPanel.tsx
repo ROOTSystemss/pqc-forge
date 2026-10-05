@@ -37,7 +37,7 @@ export function ConnectPanel({
     <div className="connect-screen">
       <Panel>
         <div className="connect-hero">
-          <span className="brand-mark-lg">◈</span>
+          <img className="brand-mark-lg" src="/rs-logo.svg" alt="" width="40" height="44" />
           <h1>PQC Forge</h1>
           <p>Repository-to-proof migration for post-quantum TLS.</p>
         </div>

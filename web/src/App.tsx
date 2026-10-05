@@ -106,7 +106,7 @@ function AppHeader({
   return (
     <header className="app-header">
       <div className="brand">
-        <span className="brand-mark">◈</span>
+        <img className="brand-mark" src="/rs-logo.svg" alt="" width="22" height="24" />
         <span>PQC Forge</span>
         {health && <span className="chip">v{health.version}</span>}
       </div>
