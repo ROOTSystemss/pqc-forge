@@ -35,17 +35,36 @@ function subEvent(type, tenantId, { item = 'pro:month', quantity = 3, status, at
 const post = (ctx, p, body, headers = ctx.headers) => fetch(ctx.base + p, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
 const deliver = (ctx, event, opts) => { const s = signed(event, opts); return fetch(`${ctx.base}/v1/billing/webhook/dodo`, { method: 'POST', headers: s.headers, body: s.body }); };
 
-test('plans are public and annual billing is ten months', async () => {
+test('plans are public and annual billing is ten months at Stage 1 prices', async () => {
   const ctx = await start();
   const plans = await (await fetch(`${ctx.base}/v1/plans`)).json();
   const pro = plans.plans.find((p) => p.id === 'pro');
   const team = plans.plans.find((p) => p.id === 'team');
-  assert.equal(pro.priceUsdMonthly, 49);
-  assert.equal(pro.priceUsdYearly, 490);
-  assert.equal(team.priceUsdMonthly, 399);
-  assert.equal(team.priceUsdYearly, 3990);
-  assert.equal(plans.oneTime[0].priceUsdOnce, 2500);
+  const business = plans.plans.find((p) => p.id === 'business');
+  assert.equal(pro.priceUsdMonthly, 79);
+  assert.equal(pro.priceUsdYearly, 790);
+  assert.equal(team.priceUsdMonthly, 599);
+  assert.equal(team.priceUsdYearly, 5990);
+  assert.equal(business.priceUsdMonthly, 1499);
+  assert.equal(plans.oneTime[0].priceUsdOnce, 1500);
+  assert.equal(plans.services[0].priceUsdFrom, 7500);
+  assert.equal(plans.foundingOffer.discountPercent, 40);
   assert.equal(plans.checkoutAvailable, true);
+  assert.equal(plans.billingProvider, 'dodo');
+  await ctx.close();
+});
+
+test('self-serve signup creates a Community account and returns the key once', async () => {
+  const ctx = await start();
+  const res = await post(ctx, '/v1/signup', { name: 'Nova Labs', email: 'ops@nova.example' }, { 'content-type': 'application/json' });
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.match(body.apiKey, /^pqcf_t_[0-9a-f]{16}_/);
+  assert.equal(body.plan, 'community');
+  const sub = await (await fetch(`${ctx.base}/v1/subscription`, { headers: { authorization: `Bearer ${body.apiKey}` } })).json();
+  assert.equal(sub.plan, 'community');
+  const bad = await post(ctx, '/v1/signup', { name: 'x' }, { 'content-type': 'application/json' });
+  assert.equal(bad.status, 400);
   await ctx.close();
 });
 
@@ -63,6 +82,33 @@ test('a new account is on Community: one public repository, no private ones', as
   assert.equal(r.allowed, true, 'the same repository keeps working');
   r = await (await post(ctx, '/v1/gate/check', { repo: 'acme/public-two' })).json();
   assert.equal(r.allowed, false, 'a second repository is over the Community limit');
+  await ctx.close();
+});
+
+test('Community cannot start paid hosted jobs; Pro can', async () => {
+  const ctx = await start();
+  const denied = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: 'example.com:443' } });
+  assert.equal(denied.status, 402);
+  assert.match((await denied.json()).error, /Pro or Team/);
+  const migrateOk = await post(ctx, '/v1/jobs', { type: 'migrate', params: { workspaceId: 'w_missing', write: false } });
+  assert.equal(migrateOk.status, 202);
+  await setManualPlan(ctx.apiHome, ctx.tenantId, { plan: 'pro', quantity: 2, until: '2099-01-01T00:00:00.000Z' });
+  const allowed = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: 'example.com:443' } });
+  assert.equal(allowed.status, 202);
+  await ctx.close();
+});
+
+test('mock checkout applies Pro immediately without Dodo', async () => {
+  const ctx = await start({ billingEnv: { PQC_FORGE_BILLING_PROVIDER: 'mock', PQC_FORGE_PUBLIC_URL: 'http://127.0.0.1:8787' } });
+  const plans = await (await fetch(`${ctx.base}/v1/plans`)).json();
+  assert.equal(plans.checkoutAvailable, true);
+  assert.equal(plans.billingProvider, 'mock');
+  const r = await (await post(ctx, '/v1/billing/checkout', { plan: 'team', interval: 'month', returnUrl: 'http://127.0.0.1:8787/?tab=billing' })).json();
+  assert.match(r.url, /checkout=success/);
+  assert.match(r.url, /mock=1/);
+  const sub = await (await fetch(`${ctx.base}/v1/subscription`, { headers: ctx.headers })).json();
+  assert.equal(sub.plan, 'team');
+  assert.equal(sub.repoLimit, 20);
   await ctx.close();
 });
 
