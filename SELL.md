@@ -10,27 +10,29 @@ Engineering and product-security teams operating public-facing Nginx, HAProxy, o
 
 ## Self-service path
 
-1. Free CLI scans public or local repositories and emits JSON or SARIF evidence with stable finding fingerprints.
+1. Free signup (or CLI) on Community: scan public or local repositories; emit JSON or SARIF evidence with stable finding fingerprints; dashboard BreakLab.
 2. A GitHub Action blocks newly introduced critical/high cryptographic debt against an approved baseline or a classical-only TLS result.
 3. Time-limited, reason-bearing suppressions make false-positive handling auditable instead of silently excluding paths.
-4. A GitHub App opens migration pull requests and attaches before/after compatibility evidence.
-5. A paid self-hosted runner handles private repositories and regulated environments.
+4. Self-serve upgrade via Dodo (Pro per-repo or Team) unlocks private repos, write migrate, PR packs, and hosted verify/runtime jobs.
+5. A paid self-hosted runner handles regulated / offline environments (invoiced).
 
 BreakLab is the differentiating feature: it searches client, server, certificate, fallback, and network combinations; reports which search strategy actually won; and produces a tamper-evident receipt with minimal counterexamples.
 
-No sales call is required for the CLI or GitHub tiers.
+No sales call is required for Community or Pro/Team self-serve. Business, Self-hosted, and Migration Pilot remain invoiced.
 
-## Launch pricing hypothesis
+## Stage 1 launch pricing (locked — Master Plan Appendix A)
 
-- Community: free local scans and one public repository.
-- Pro: $49 per repository per month for private scans, migration pull requests, and evidence history.
-- Team: $399 per month for 20 repositories, policy gates, and shared evidence.
-- Business: $999 per month for 75 repositories, company sign-in and priority support (invoiced).
-- Self-hosted: from $18,000 per year, including offline evidence export.
-- Readiness report: $2,500 once; the customer runs the scan and we sign the findings. It doubles as the PCI DSS 4.0.1 requirement 12.3.3 cryptographic inventory.
-- Migration pilot: from $12,000, a 4-week fixed scope on staging (invoiced).
+- Community: free local scans, one public repository, dashboard scan & BreakLab.
+- Pro: **$79** per repository per month for private scans, migration pull requests, and evidence history.
+- Team: **$599** per month for 20 repositories, policy gates, and shared evidence.
+- Business: **$1,499** per month for 75 repositories, company sign-in and priority support (invoiced).
+- Self-hosted: from **$18,000** per year, including offline evidence export.
+- Readiness report: **$1,500** once; the customer runs the scan and we sign the findings. It doubles as the PCI DSS 4.0.1 requirement 12.3.3 cryptographic inventory.
+- Migration pilot: from **$7,500**, a fixed-scope staging engagement (invoiced).
 
-These are launch prices to test through checkout conversion, not claims about willingness to pay.
+Annual = 10× monthly (two months free). Founding offer: first 25 customers, 40% off for 12 months (applied at payment).
+
+Source of truth in-repo: `src/billing/plans.js`.
 
 ## Product proof required before charging
 

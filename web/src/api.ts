@@ -1,5 +1,6 @@
 import type {
-  HealthResponse, JobListResponse, JobRecord, ReceiptVerification, WorkspaceFile, WorkspaceUploadResponse
+  HealthResponse, JobListResponse, JobRecord, PlansResponse, ReceiptVerification,
+  SubscriptionResponse, WorkspaceFile, WorkspaceUploadResponse
 } from './types';
 
 export class ApiError extends Error {
@@ -9,6 +10,28 @@ export class ApiError extends Error {
     this.status = status;
     this.name = 'ApiError';
   }
+}
+
+async function parseResponse<T>(response: Response, baseUrl: string): Promise<T> {
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new ApiError(response.status, body.error ?? `Request failed with status ${response.status}.`);
+  return body as T;
+}
+
+/** Public signup — no API key yet. */
+export async function signup(baseUrl: string, body: { name: string; email?: string }) {
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/signup`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch {
+    throw new ApiError(0, `Could not reach ${baseUrl} — check the base URL and that the API server is running.`);
+  }
+  return parseResponse<{ tenantId: string; apiKey: string; plan: string; message: string }>(response, baseUrl);
 }
 
 /**
@@ -40,14 +63,25 @@ export class PqcForgeClient {
     } catch {
       throw new ApiError(0, `Could not reach ${this.baseUrl} — check the base URL and that the API server is running.`);
     }
-    const text = await response.text();
-    const body = text ? JSON.parse(text) : {};
-    if (!response.ok) throw new ApiError(response.status, body.error ?? `Request failed with status ${response.status}.`);
-    return body as T;
+    return parseResponse<T>(response, this.baseUrl);
   }
 
   health() {
     return this.request<HealthResponse>('/v1/health');
+  }
+
+  plans() {
+    return this.request<PlansResponse>('/v1/plans');
+  }
+
+  subscription() {
+    return this.request<SubscriptionResponse>('/v1/subscription');
+  }
+
+  checkout(body: { plan?: string; interval?: string; quantity?: number; item?: string; returnUrl?: string }) {
+    return this.request<{ url: string; ref: string | null }>('/v1/billing/checkout', {
+      method: 'POST', body: JSON.stringify(body)
+    });
   }
 
   createWorkspace(files: WorkspaceFile[]) {

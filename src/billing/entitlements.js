@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { PLANS } from './plans.js';
+import { PLANS, COMMUNITY_JOB_TYPES } from './plans.js';
 
 // What an account has paid for, and which repositories use it. Stored per tenant,
 // next to tenant.json. Data minimization: repositories are kept only as a SHA-256
@@ -97,6 +97,21 @@ export async function entitlement(apiHome, tenantId, now = Date.now()) {
     reposInUse: repos.fingerprints.length,
     reportCredits: sub?.reportCredits ?? 0,
     features: plan.features
+  };
+}
+
+/**
+ * Hosted API job gate: Community matches the free CLI (scan, migrate, BreakLab).
+ * Paid plans unlock PR packs, live verify, and runtime/staging/protocol jobs.
+ * Private-repo CI remains gated separately via checkRepository / Action.
+ */
+export function assertJobAllowed(ent, type, _params = {}) {
+  if (ent.plan !== 'community') return { allowed: true, plan: ent.plan };
+  if (COMMUNITY_JOB_TYPES.includes(type) || type === 'migrate') return { allowed: true, plan: ent.plan };
+  return {
+    allowed: false,
+    plan: ent.plan,
+    reason: `Job type "${type}" needs Pro or Team. Upgrade from the Billing tab.`
   };
 }
 

@@ -1,0 +1,57 @@
+/* Billing / signup — kept separate from the Lattice shell styles. */
+
+.connect-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 4px;
+  justify-content: center;
+}
+
+.connect-mode-tabs .tab {
+  margin: 0 6px;
+  padding: 8px 2px;
+}
+
+.billing-notice {
+  background: var(--pass-bg);
+  color: var(--pass);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.billing-plan-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.billing-plan-card {
+  background: var(--bg-1);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.billing-plan-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.billing-price {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.api-key-reveal {
+  display: block;
+  margin-top: 6px;
+  word-break: break-all;
+  font-size: 11px;
+}

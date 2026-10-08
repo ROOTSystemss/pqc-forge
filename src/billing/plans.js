@@ -1,4 +1,5 @@
-// PQC Forge plans. Prices follow SELL.md; annual billing is ten months' price (two free).
+// PQC Forge plans. Stage 1 prices (Master Plan Appendix A / Phase 0 locked).
+// Annual billing is ten months' price (two free).
 // A plan says what an account may do; which payment provider sold it lives in the
 // subscription record, so plans never depend on a provider.
 
@@ -9,12 +10,12 @@ export const PLANS = {
     priceUsdMonthly: 0,
     repoLimit: 1,
     privateRepos: false,
-    features: ['Local CLI scans', 'One public repository in CI']
+    features: ['Local CLI scans', 'One public repository in CI', 'Dashboard scan & BreakLab']
   },
   pro: {
     id: 'pro',
     name: 'Pro',
-    priceUsdMonthly: 49,
+    priceUsdMonthly: 79,
     perRepo: true,
     repoLimit: null, // equals the quantity bought
     privateRepos: true,
@@ -23,7 +24,7 @@ export const PLANS = {
   team: {
     id: 'team',
     name: 'Team',
-    priceUsdMonthly: 399,
+    priceUsdMonthly: 599,
     repoLimit: 20,
     privateRepos: true,
     features: ['20 repositories', 'Policy gates', 'Shared evidence', 'Everything in Pro']
@@ -31,7 +32,7 @@ export const PLANS = {
   business: {
     id: 'business',
     name: 'Business',
-    priceUsdMonthly: 999,
+    priceUsdMonthly: 1499,
     invoiced: true,
     repoLimit: 75,
     privateRepos: true,
@@ -49,10 +50,24 @@ export const PLANS = {
 };
 
 // One-time purchase: a signed readiness report the customer generates themselves.
-export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 2500, credits: 1 };
+export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 1500, credits: 1 };
+
+/** Migration pilot remains invoiced (not self-serve checkout). */
+export const MIGRATION_PILOT = { id: 'migration-pilot', name: 'Migration Pilot', priceUsdFrom: 7500, invoiced: true };
+
+/** Founding offer (Phase 0): applied at payment processor / by RootSystems — not a public coupon code. */
+export const FOUNDING_OFFER = {
+  discountPercent: 40,
+  months: 12,
+  firstCustomers: 25,
+  note: 'First 25 customers: 40% off list price for 12 months. Applied at checkout by RootSystems.'
+};
 
 export const INTERVALS = ['month', 'year'];
 export const SELF_SERVE_PLANS = ['pro', 'team'];
+
+/** Job types Community may run in the hosted API (paid unlocks PR packs / verify / runtime). */
+export const COMMUNITY_JOB_TYPES = ['scan', 'migrate', 'breaklab', 'breaklab-grid'];
 
 export function annualPrice(planId) {
   const plan = PLANS[planId];
@@ -71,9 +86,13 @@ export function publicCatalog() {
       repoLimit: p.repoLimit,
       privateRepos: p.privateRepos,
       invoiced: Boolean(p.invoiced),
+      selfServe: SELF_SERVE_PLANS.includes(p.id),
       features: p.features
     })),
     oneTime: [{ ...REPORT }],
-    annualNote: 'Annual billing is ten months’ price: two months free.'
+    services: [{ ...MIGRATION_PILOT }],
+    foundingOffer: { ...FOUNDING_OFFER },
+    annualNote: 'Annual billing is ten months’ price: two months free.',
+    selfServePlans: [...SELF_SERVE_PLANS]
   };
 }

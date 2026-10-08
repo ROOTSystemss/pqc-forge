@@ -92,8 +92,40 @@ export function dodoProvider(env = process.env, fetchImpl = globalThis.fetch) {
   };
 }
 
+/**
+ * Local / demo billing. Entitlements apply immediately on checkout — no Dodo
+ * products or webhook keys required. Set PQC_FORGE_BILLING_PROVIDER=mock.
+ */
+export function mockProvider(env = process.env) {
+  return {
+    name: 'mock',
+    configured() {
+      return env.PQC_FORGE_BILLING_PROVIDER === 'mock' || env.PQC_FORGE_MOCK_BILLING === '1';
+    },
+    async createCheckout({ tenantId, item, quantity = 1, returnUrl }) {
+      if (!ITEMS.includes(item)) throw new Error(`Unknown item: ${item}`);
+      const sep = returnUrl.includes('?') ? '&' : '?';
+      return {
+        url: `${returnUrl}${sep}checkout=success&item=${encodeURIComponent(item)}&quantity=${quantity}&mock=1`,
+        ref: `mock_${tenantId}_${item}_${Date.now()}`,
+        // Server uses applyImmediately to grant access without a webhook.
+        applyImmediately: true,
+        item,
+        quantity: item.startsWith('pro:') ? quantity : 1
+      };
+    },
+    verifyWebhook() {
+      throw new Error('Mock billing has no webhooks; entitlements apply at checkout.');
+    },
+    normalize() {
+      return null;
+    }
+  };
+}
+
 export function providerByName(name, env = process.env, fetchImpl) {
   if (name === 'dodo') return dodoProvider(env, fetchImpl);
+  if (name === 'mock') return mockProvider(env);
   return null;
 }
 

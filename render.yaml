@@ -1,0 +1,33 @@
+# Sample Render Blueprint for PQC Forge (API + built dashboard).
+# ROOT: create the service from this file or the dashboard, attach a persistent disk,
+# and set secrets listed in DEPLOY.md. Do not commit live API keys.
+
+services:
+  - type: web
+    name: pqc-forge
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run web:install && npm run web:build
+    startCommand: export PQC_FORGE_API_PORT=${PORT:-8787} PQC_FORGE_API_HOST=0.0.0.0 && npm run api
+    healthCheckPath: /v1/health
+    envVars:
+      - key: PQC_FORGE_API_HOST
+        value: "0.0.0.0"
+      - key: PQC_FORGE_PUBLIC_URL
+        sync: false
+      - key: PQC_FORGE_BILLING_PROVIDER
+        value: dodo
+      - key: DODO_ENVIRONMENT
+        value: test_mode
+      - key: DODO_PAYMENTS_API_KEY
+        sync: false
+      - key: DODO_PAYMENTS_WEBHOOK_KEY
+        sync: false
+      - key: PQC_FORGE_DODO_PRODUCTS
+        sync: false
+      - key: PQC_FORGE_API_HOME
+        value: /var/data/pqc-forge-api-data
+    disk:
+      name: pqc-forge-data
+      mountPath: /var/data
+      sizeGB: 1

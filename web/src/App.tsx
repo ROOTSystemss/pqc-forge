@@ -12,6 +12,8 @@ import { BreakLabTab } from './components/BreakLabTab';
 import { BreakLabGridTab } from './components/BreakLabGridTab';
 import { JobsTab } from './components/JobsTab';
 import { ReceiptTab } from './components/ReceiptTab';
+import { BillingTab } from './components/BillingTab';
+import './billing.css';
 
 const STORAGE_BASE_URL = 'pqcf.baseUrl';
 const STORAGE_API_KEY = 'pqcf.apiKey';
@@ -23,7 +25,8 @@ const TABS = [
   { id: 'breaklab', label: 'BreakLab' },
   { id: 'grid', label: 'BreakLab Grid' },
   { id: 'jobs', label: 'Jobs' },
-  { id: 'receipt', label: 'Verify Receipt' }
+  { id: 'receipt', label: 'Verify Receipt' },
+  { id: 'billing', label: 'Billing' }
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -32,10 +35,17 @@ function readStorage(key: string): string {
   try { return localStorage.getItem(key) ?? ''; } catch { return ''; }
 }
 
+function tabFromUrl(): TabId {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
+  if (TABS.some((entry) => entry.id === tab)) return tab as TabId;
+  return 'scan';
+}
+
 export default function App() {
   const [client, setClient] = useState<PqcForgeClient | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [tab, setTab] = useState<TabId>('scan');
+  const [tab, setTab] = useState<TabId>(tabFromUrl);
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -53,6 +63,7 @@ export default function App() {
       localStorage.setItem(STORAGE_API_KEY, apiKey);
     } catch { /* private browsing / storage disabled — the session still works */ }
     setClient(newClient);
+    if (new URLSearchParams(window.location.search).get('tab') === 'billing') setTab('billing');
   }
 
   function handleDisconnect() {
@@ -63,12 +74,21 @@ export default function App() {
     setHealth(null);
   }
 
+  function selectTab(id: TabId) {
+    setTab(id);
+    const params = new URLSearchParams(window.location.search);
+    if (id === 'scan') params.delete('tab');
+    else params.set('tab', id);
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+    window.history.replaceState({}, '', next);
+  }
+
   if (!client) {
     return (
       <div className="app">
         <LatticeBackground />
         <AppHeader health={null} onDisconnect={null} theme={theme} onThemeChange={setTheme} />
-        <ConnectPanel initialBaseUrl={readStorage(STORAGE_BASE_URL) || 'http://localhost:8787'} initialApiKey={readStorage(STORAGE_API_KEY)} onConnect={handleConnect} />
+        <ConnectPanel initialBaseUrl={readStorage(STORAGE_BASE_URL) || window.location.origin} initialApiKey={readStorage(STORAGE_API_KEY)} onConnect={handleConnect} />
       </div>
     );
   }
@@ -80,7 +100,7 @@ export default function App() {
       <nav className="tabs">
         <div className="tabs-track">
           {TABS.map(({ id, label }) => (
-            <button key={id} className={id === tab ? 'tab active' : 'tab'} onClick={() => setTab(id)}>{label}</button>
+            <button key={id} className={id === tab ? 'tab active' : 'tab'} onClick={() => selectTab(id)}>{label}</button>
           ))}
         </div>
       </nav>
@@ -92,6 +112,7 @@ export default function App() {
         {tab === 'grid' && <BreakLabGridTab client={client} />}
         {tab === 'jobs' && <JobsTab client={client} />}
         {tab === 'receipt' && <ReceiptTab client={client} />}
+        {tab === 'billing' && <BillingTab client={client} />}
       </main>
     </div>
   );
