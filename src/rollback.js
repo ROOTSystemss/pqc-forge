@@ -14,14 +14,23 @@ function inside(root, relative) {
   return resolved;
 }
 
-export async function rollbackMigration(receipt, { write = false } = {}) {
+// The CLI trusts any validly signed receipt for a folder on the user's own machine. The hosted API
+// passes `trustedPublicKeys` (only receipts this server signed) and `allowedRoot` (only the caller's
+// own workspaces), because a caller can sign a receipt with a key of their own and name any root.
+export async function rollbackMigration(receipt, { write = false, trustedPublicKeys = null, allowedRoot = null } = {}) {
   if (receipt?.schema !== 'pqc-forge.migration-receipt/v1') {
     throw new Error('Rollback requires a PQC Forge migration-receipt/v1 document.');
   }
-  const verification = verifyReceipt(receipt);
+  const verification = verifyReceipt(receipt, { trustedPublicKeys });
   if (!verification.valid) throw new Error(`Refusing rollback: migration receipt failed verification (${verification.errors.join(', ')}).`);
   if (receipt.migration.mode !== 'applied') throw new Error('Refusing rollback: receipt describes a dry-run, not applied changes.');
   const root = path.resolve(receipt.migration.root);
+  if (allowedRoot) {
+    const allowed = path.resolve(allowedRoot);
+    if (root !== allowed && !root.startsWith(`${allowed}${path.sep}`)) {
+      throw new Error('Refusing rollback: the receipt is for a folder outside your own workspaces.');
+    }
+  }
   const pending = [];
   for (const artifact of receipt.migration.artifacts) {
     if (!artifact.backup) throw new Error(`Refusing rollback: no backup recorded for ${artifact.file}.`);

@@ -8,13 +8,16 @@ export function parseTarget(target) {
   };
 }
 
-export async function verifyTls(target, { insecure = false, timeoutMs = 10000 } = {}) {
+// `connectAddress` (optional) is the exact IP to connect to, already checked by the caller; the
+// hostname is still used for SNI and certificate checks. The hosted API uses it so a DNS answer
+// cannot change between the safety check and the connection.
+export async function verifyTls(target, { insecure = false, timeoutMs = 10000, connectAddress = null } = {}) {
   const { host, port } = parseTarget(target);
   const started = Date.now();
 
   return new Promise((resolve, reject) => {
     const socket = tls.connect({
-      host,
+      host: connectAddress || host,
       port,
       servername: host,
       minVersion: 'TLSv1.3',

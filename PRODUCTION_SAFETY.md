@@ -38,5 +38,14 @@ Run probes only in staging or an isolated target-like container with least privi
 `bin/pqc-forge-api.js` binds `127.0.0.1` (loopback only) by default because it speaks plain HTTP and authenticates with a bearer API key in a header — anyone who can reach an unencrypted socket can read that key off the wire. Reaching it from another machine requires explicitly setting `PQC_FORGE_API_HOST`, which is then the operator's decision, not the default. Before doing that:
 
 - Put a TLS-terminating reverse proxy in front of it. This server does not terminate TLS itself.
-- Treat every job type as running with the API process's own privileges and network reach. `verify` and `runtime-probe` connect to a target the authenticated tenant supplies — in a shared deployment, a tenant can direct the server to open connections to hosts on its own network (including link-local/metadata addresses), the same way any TLS-verification or health-check tool can. Run the API on a host whose network reachability you're comfortable exposing to every tenant, not one with privileged internal access.
-- `runtime-probe` invokes real server binaries (`nginx -t`, `haproxy -c`, etc.) on whatever host runs the API process — the same safety contract as the CLI above applies; least-privilege that host.
+- Treat every job type as running with the API process's own privileges, and still run the API on a least-privilege host.
+
+### Shared-host defaults (`src/api/hosted-safety.js`)
+
+The API assumes its tenants are strangers to each other and to the operator:
+
+- **`runtime-probe` and `protocol-lab` are off.** They start server binaries (`nginx -t`, `haproxy -c`, with executables the tenant names) or Docker on the API host. Set `PQC_FORGE_API_ALLOW_HOST_EXECUTION=1` only on a dedicated, target-like runner that serves one customer. Otherwise customers run them with the CLI or the GitHub Action on their own runner.
+- **`verify` reaches public addresses only.** Loopback, private ranges, link-local (including `169.254.169.254` cloud metadata), carrier-grade NAT, multicast, IPv6 unique-local and NAT64 are refused. A name that resolves to any such address is refused as a whole, and the connection goes to the exact address that was checked, so the DNS answer cannot change in between. `PQC_FORGE_API_ALLOW_PRIVATE_TARGETS=1` lifts this for a single-customer, internal deployment.
+- **`rollback` accepts only this server's own receipts, for the caller's own workspaces.** A migration receipt names the folder to restore. Anyone can sign a receipt with a key of their own, so the API checks that this server signed it and that its folder is inside the caller's workspaces. The CLI keeps its old behaviour (your own machine, your own receipts).
+
+`test/hosted-safety.test.js` tries each of these through the HTTP API.
