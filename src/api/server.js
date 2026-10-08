@@ -9,11 +9,12 @@ import { verifyReceipt } from '../breaklab/receipt.js';
 import { loadSigningKey } from '../signing.js';
 import { VERSION } from '../version.js';
 import { publicCatalog, SELF_SERVE_PLANS, INTERVALS } from '../billing/plans.js';
-import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent } from '../billing/entitlements.js';
+import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent, assertJobAllowed } from '../billing/entitlements.js';
 import { checkoutProvider, providerByName } from '../billing/providers.js';
 import { loadTenant } from './tenants.js';
 
 const MAX_BODY_BYTES = 68 * 1024 * 1024; // above the 64 MiB workspace cap, plus headroom for JSON overhead
+const SIGNUP_NAME_MAX = 80;
 
 function readRawBody(req, limit = 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -67,6 +68,37 @@ class HttpError extends Error {
   }
 }
 
+/** Accept https production URLs and local http for mock/dev return after checkout. */
+function resolveReturnUrl(requested, billingEnv) {
+  if (typeof requested === 'string') {
+    const trimmed = requested.trim();
+    if (/^https:\/\/[^\s"'<>]+$/i.test(trimmed)) return trimmed;
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(trimmed)) return trimmed;
+  }
+  const fallback = billingEnv.PQC_FORGE_PUBLIC_URL || '';
+  if (/^https:\/\//i.test(fallback) || /^http:\/\/(localhost|127\.0\.0\.1)/i.test(fallback)) return fallback;
+  return 'https://rootsystems.app/pricing';
+}
+
+function mockSubscriptionEvent(tenantId, item, quantity) {
+  const occurredAt = new Date().toISOString();
+  if (item === 'report') {
+    return { kind: 'report', credits: 1, provider: 'mock', providerRef: `mock_report_${Date.now()}`, occurredAt };
+  }
+  const [plan, interval] = item.split(':');
+  return {
+    kind: 'subscription',
+    plan,
+    interval,
+    status: 'active',
+    quantity,
+    currentPeriodEnd: new Date(Date.now() + (interval === 'year' ? 365 : 30) * 864e5).toISOString(),
+    provider: 'mock',
+    providerRef: `mock_sub_${Date.now()}`,
+    occurredAt
+  };
+}
+
 /**
  * Create (but do not start) the PQC Forge API server.
  *
@@ -113,6 +145,31 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       handler: async () => ({ status: 'ok', version: VERSION, ...queue.stats() })
     },
     {
+      method: 'POST', pattern: /^\/v1\/signup$/, public: true, status: 201,
+      handler: async (req, res, params, body) => {
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (name.length < 2 || name.length > SIGNUP_NAME_MAX) {
+          throw new HttpError(400, `Provide a name between 2 and ${SIGNUP_NAME_MAX} characters.`);
+        }
+        if (!/^[\p{L}\p{N} .'_&+-]+$/u.test(name)) {
+          throw new HttpError(400, 'Name may only include letters, numbers, spaces, and .\'+_&-.');
+        }
+        const email = typeof body.email === 'string' ? body.email.trim().slice(0, 160) : '';
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw new HttpError(400, 'Email does not look valid.');
+        }
+        await fs.mkdir(apiHome, { recursive: true });
+        const created = await createTenant(apiHome, { name, email: email || undefined });
+        const ent = await entitlement(apiHome, created.tenantId);
+        return {
+          tenantId: created.tenantId,
+          apiKey: created.apiKey,
+          plan: ent.plan,
+          message: 'Save this API key now — it is shown once. Only its hash is stored.'
+        };
+      }
+    },
+    {
       method: 'POST', pattern: /^\/v1\/workspaces$/,
       handler: async (req, res, params, body, tenant) => {
         if (!Array.isArray(body.files)) throw new HttpError(400, 'Body requires a files array: [{ path, content, encoding? }].');
@@ -137,6 +194,9 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       method: 'POST', pattern: /^\/v1\/jobs$/, status: 202,
       handler: async (req, res, params, body, tenant) => {
         if (typeof body.type !== 'string') throw new HttpError(400, `Body requires a job type: one of ${JOB_TYPES.join(', ')}.`);
+        const ent = await entitlement(apiHome, tenant.tenantId);
+        const gate = assertJobAllowed(ent, body.type, body.params ?? {});
+        if (!gate.allowed) throw new HttpError(402, gate.reason);
         try {
           return await queue.submit(tenant.tenantId, body.type, body.params ?? {});
         } catch (error) {
@@ -178,7 +238,14 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     // ---------- subscription ----------
     {
       method: 'GET', pattern: /^\/v1\/plans$/, public: true,
-      handler: async () => ({ ...publicCatalog(), checkoutAvailable: Boolean(checkoutProvider(billingEnv, fetchImpl)?.configured()) })
+      handler: async () => {
+        const provider = checkoutProvider(billingEnv, fetchImpl);
+        return {
+          ...publicCatalog(),
+          checkoutAvailable: Boolean(provider?.configured()),
+          billingProvider: provider?.configured() ? provider.name : null
+        };
+      }
     },
     {
       method: 'GET', pattern: /^\/v1\/subscription$/,
@@ -188,16 +255,24 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       method: 'POST', pattern: /^\/v1\/billing\/checkout$/,
       handler: async (req, res, params, body, tenant) => {
         const provider = checkoutProvider(billingEnv, fetchImpl);
-        if (!provider || !provider.configured()) throw new HttpError(503, 'Checkout is not available yet. Contact RootSystems to buy a plan.');
+        if (!provider || !provider.configured()) throw new HttpError(503, 'Checkout is not available yet. Contact RootSystems to buy a plan, or set PQC_FORGE_BILLING_PROVIDER=mock for local demo.');
         const item = body.item === 'report' ? 'report' : `${body.plan}:${body.interval ?? 'month'}`;
-        if (item !== 'report' && (!SELF_SERVE_PLANS.includes(body.plan) || !INTERVALS.includes(body.interval ?? 'month'))) throw new HttpError(400, 'Choose plan "pro" or "team" and interval "month" or "year", or item "report".');
+        if (item !== 'report' && (!SELF_SERVE_PLANS.includes(body.plan) || !INTERVALS.includes(body.interval ?? 'month'))) {
+          throw new HttpError(400, 'Choose plan "pro" or "team" and interval "month" or "year", or item "report". Business and Self-hosted are invoiced — contact RootSystems.');
+        }
         const quantity = Math.min(500, Math.max(1, Number.parseInt(body.quantity ?? 1, 10) || 1));
-        const returnUrl = typeof body.returnUrl === 'string' && /^https:\/\//.test(body.returnUrl) ? body.returnUrl : (billingEnv.PQC_FORGE_PUBLIC_URL || 'https://rootsystems.app/pricing');
+        const returnUrl = resolveReturnUrl(body.returnUrl, billingEnv);
+        let checkout;
         try {
-          return await provider.createCheckout({ tenantId: tenant.tenantId, item, quantity, returnUrl });
+          checkout = await provider.createCheckout({ tenantId: tenant.tenantId, item, quantity, returnUrl });
         } catch (error) {
           throw new HttpError(502, error.message);
         }
+        if (checkout.applyImmediately) {
+          const event = mockSubscriptionEvent(tenant.tenantId, checkout.item ?? item, checkout.quantity ?? quantity);
+          await applySubscriptionEvent(apiHome, tenant.tenantId, event);
+        }
+        return { url: checkout.url, ref: checkout.ref ?? null };
       }
     },
     {
