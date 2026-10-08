@@ -212,3 +212,39 @@ export interface BreakLabScenario {
   };
   [key: string]: unknown;
 }
+
+export interface PlanCatalogEntry {
+  id: string;
+  name: string;
+  priceUsdMonthly: number | null;
+  priceUsdYearly: number | null;
+  perRepo: boolean;
+  repoLimit: number | null;
+  privateRepos: boolean;
+  invoiced: boolean;
+  selfServe: boolean;
+  features: string[];
+}
+
+export interface PlansResponse {
+  plans: PlanCatalogEntry[];
+  oneTime: { id: string; name: string; priceUsdOnce: number; credits: number }[];
+  services?: { id: string; name: string; priceUsdFrom: number; invoiced: boolean }[];
+  foundingOffer?: { discountPercent: number; months: number; firstCustomers: number; note: string };
+  annualNote: string;
+  selfServePlans: string[];
+  checkoutAvailable: boolean;
+  billingProvider: string | null;
+}
+
+export interface SubscriptionResponse {
+  plan: string;
+  status: string;
+  interval: string | null;
+  currentPeriodEnd: string | null;
+  privateRepos: boolean;
+  repoLimit: number | null;
+  reposInUse: number;
+  reportCredits: number;
+  features: string[];
+}
