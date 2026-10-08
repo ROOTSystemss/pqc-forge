@@ -22,7 +22,7 @@ function tenantRecordPath(apiHome, tenantId) {
  * keys. Losing the returned key means provisioning a new one; there is no
  * recovery path, by design.
  */
-export async function createTenant(apiHome, { name } = {}) {
+export async function createTenant(apiHome, { name, email } = {}) {
   if (!name || typeof name !== 'string' || !name.trim()) throw new Error('Tenant creation requires a non-empty name.');
   const tenantId = `t_${randomBytes(8).toString('hex')}`;
   const secret = randomBytes(24).toString('base64url');
@@ -31,6 +31,7 @@ export async function createTenant(apiHome, { name } = {}) {
     schema: TENANT_SCHEMA,
     tenantId,
     name: name.trim(),
+    ...(email ? { email: String(email).trim().toLowerCase() } : {}),
     createdAt: new Date().toISOString(),
     apiKeyHash: `sha256:${sha256(apiKey)}`
   };
