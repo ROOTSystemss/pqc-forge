@@ -35,7 +35,7 @@ function subEvent(type, tenantId, { item = 'pro:month', quantity = 3, status, at
 const post = (ctx, p, body, headers = ctx.headers) => fetch(ctx.base + p, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
 const deliver = (ctx, event, opts) => { const s = signed(event, opts); return fetch(`${ctx.base}/v1/billing/webhook/dodo`, { method: 'POST', headers: s.headers, body: s.body }); };
 
-test('plans are public and annual billing is ten months at Stage 1 prices', async () => {
+test('plans are public and annual billing is ten months at the decided prices', async () => {
   const ctx = await start();
   const plans = await (await fetch(`${ctx.base}/v1/plans`)).json();
   const pro = plans.plans.find((p) => p.id === 'pro');
@@ -43,10 +43,14 @@ test('plans are public and annual billing is ten months at Stage 1 prices', asyn
   const business = plans.plans.find((p) => p.id === 'business');
   assert.equal(pro.priceUsdMonthly, 79);
   assert.equal(pro.priceUsdYearly, 790);
-  assert.equal(team.priceUsdMonthly, 599);
-  assert.equal(team.priceUsdYearly, 5990);
-  assert.equal(business.priceUsdMonthly, 1499);
-  assert.equal(plans.oneTime[0].priceUsdOnce, 1500);
+  assert.equal(pro.repoLimit, 5);
+  assert.equal(pro.perRepo, false);
+  assert.equal(team.priceUsdMonthly, 399);
+  assert.equal(team.priceUsdYearly, 3990);
+  assert.equal(team.repoLimit, 25);
+  assert.equal(business.priceUsdMonthly, 999);
+  assert.equal(business.repoLimit, 100);
+  assert.equal(plans.oneTime[0].priceUsdOnce, 2500, 'the same price rootsystems.app shows');
   assert.equal(plans.services[0].priceUsdFrom, 7500);
   assert.equal(plans.foundingOffer.discountPercent, 40);
   assert.equal(plans.checkoutAvailable, true);
@@ -108,7 +112,7 @@ test('mock checkout applies Pro immediately without Dodo', async () => {
   assert.match(r.url, /mock=1/);
   const sub = await (await fetch(`${ctx.base}/v1/subscription`, { headers: ctx.headers })).json();
   assert.equal(sub.plan, 'team');
-  assert.equal(sub.repoLimit, 20);
+  assert.equal(sub.repoLimit, 25);
   await ctx.close();
 });
 
@@ -119,18 +123,18 @@ test('the gate needs a valid key', async () => {
   await ctx.close();
 });
 
-test('a signed Dodo event activates Pro for the quantity bought, and limits follow it', async () => {
+test('a signed Dodo event activates Pro (5 private repositories), and limits follow it', async () => {
   const ctx = await start();
-  const res = await deliver(ctx, subEvent('subscription.active', ctx.tenantId, { quantity: 3, status: 'active' }));
+  const res = await deliver(ctx, subEvent('subscription.active', ctx.tenantId, { quantity: 1, status: 'active' }));
   assert.equal(res.status, 200);
   assert.equal((await res.json()).applied, true);
   const sub = await (await fetch(`${ctx.base}/v1/subscription`, { headers: ctx.headers })).json();
   assert.equal(sub.plan, 'pro');
-  assert.equal(sub.repoLimit, 3);
-  for (const name of ['a', 'b', 'c']) assert.equal((await (await post(ctx, '/v1/gate/check', { repo: `acme/${name}`, private: true })).json()).allowed, true);
-  assert.equal((await (await post(ctx, '/v1/gate/check', { repo: 'acme/d', private: true })).json()).allowed, false);
+  assert.equal(sub.repoLimit, 5);
+  for (const name of ['a', 'b', 'c', 'd', 'e']) assert.equal((await (await post(ctx, '/v1/gate/check', { repo: `acme/${name}`, private: true })).json()).allowed, true);
+  assert.equal((await (await post(ctx, '/v1/gate/check', { repo: 'acme/f', private: true })).json()).allowed, false);
   assert.equal((await (await post(ctx, '/v1/gate/release', { repo: 'acme/a' })).json()).released, true);
-  assert.equal((await (await post(ctx, '/v1/gate/check', { repo: 'acme/d', private: true })).json()).allowed, true, 'releasing a repository frees its place');
+  assert.equal((await (await post(ctx, '/v1/gate/check', { repo: 'acme/f', private: true })).json()).allowed, true, 'releasing a repository frees its place');
   await ctx.close();
 });
 
@@ -178,7 +182,7 @@ test('on hold keeps access while a renewal is retried; expiry removes it', async
   await deliver(ctx, subEvent('subscription.on_hold', ctx.tenantId, { item: 'team:year', at: new Date(Date.now() - 1000).toISOString() }));
   let sub = await (await fetch(`${ctx.base}/v1/subscription`, { headers: ctx.headers })).json();
   assert.equal(sub.plan, 'team');
-  assert.equal(sub.repoLimit, 20);
+  assert.equal(sub.repoLimit, 25);
   await deliver(ctx, subEvent('subscription.expired', ctx.tenantId, { item: 'team:year' }));
   sub = await (await fetch(`${ctx.base}/v1/subscription`, { headers: ctx.headers })).json();
   assert.equal(sub.plan, 'community');

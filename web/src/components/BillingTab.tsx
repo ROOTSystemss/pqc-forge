@@ -119,7 +119,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
             {plans.foundingOffer && (
               <p className="muted small">{plans.foundingOffer.note}</p>
             )}
-            <div>
+            {selfServe.some((plan) => plan.perRepo) && <div>
               <label htmlFor="pro-qty">Pro repositories</label>
               <input
                 id="pro-qty"
@@ -129,7 +129,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
                 value={quantity}
                 onChange={(event) => setQuantity(Math.min(500, Math.max(1, Number(event.target.value) || 1)))}
               />
-            </div>
+            </div>}
             <div className="billing-plan-grid">
               {selfServe.map((plan) => (
                 <div key={plan.id} className="billing-plan-card">

@@ -12,7 +12,7 @@ export class ApiError extends Error {
   }
 }
 
-async function parseResponse<T>(response: Response, baseUrl: string): Promise<T> {
+async function parseResponse<T>(response: Response, _baseUrl: string): Promise<T> {
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
   if (!response.ok) throw new ApiError(response.status, body.error ?? `Request failed with status ${response.status}.`);

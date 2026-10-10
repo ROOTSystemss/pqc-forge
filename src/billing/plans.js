@@ -1,4 +1,5 @@
-// PQC Forge plans. Stage 1 prices (Master Plan Appendix A / Phase 0 locked).
+// PQC Forge plans. Prices decided 2026-10-10 (mid-market: not cheap, not enterprise-only):
+// Pro $79, Team $399, Business $999 per month; readiness report $2,500 (matches rootsystems.app).
 // Annual billing is ten months' price (two free).
 // A plan says what an account may do; which payment provider sold it lives in the
 // subscription record, so plans never depend on a provider.
@@ -16,27 +17,26 @@ export const PLANS = {
     id: 'pro',
     name: 'Pro',
     priceUsdMonthly: 79,
-    perRepo: true,
-    repoLimit: null, // equals the quantity bought
+    repoLimit: 5,
     privateRepos: true,
-    features: ['Private repositories', 'CI gate', 'Migration pull requests', 'Evidence history']
+    features: ['Up to 5 private repositories', 'CI gate', 'Migration pull requests', 'Evidence history']
   },
   team: {
     id: 'team',
     name: 'Team',
-    priceUsdMonthly: 599,
-    repoLimit: 20,
+    priceUsdMonthly: 399,
+    repoLimit: 25,
     privateRepos: true,
-    features: ['20 repositories', 'Policy gates', 'Shared evidence', 'Everything in Pro']
+    features: ['Up to 25 repositories', 'Policy gates', 'Shared evidence', 'Everything in Pro']
   },
   business: {
     id: 'business',
     name: 'Business',
-    priceUsdMonthly: 1499,
+    priceUsdMonthly: 999,
     invoiced: true,
-    repoLimit: 75,
+    repoLimit: 100,
     privateRepos: true,
-    features: ['75 repositories', 'Company sign-in', 'Priority support', 'Everything in Team']
+    features: ['Up to 100 repositories', 'Company sign-in', 'Priority support', 'Everything in Team']
   },
   selfhosted: {
     id: 'selfhosted',
@@ -50,7 +50,7 @@ export const PLANS = {
 };
 
 // One-time purchase: a signed readiness report the customer generates themselves.
-export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 1500, credits: 1 };
+export const REPORT = { id: 'report', name: 'Readiness report', priceUsdOnce: 2500, credits: 1 };
 
 /** Migration pilot remains invoiced (not self-serve checkout). */
 export const MIGRATION_PILOT = { id: 'migration-pilot', name: 'Migration Pilot', priceUsdFrom: 7500, invoiced: true };

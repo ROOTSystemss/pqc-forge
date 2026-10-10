@@ -33,9 +33,9 @@ A sample `render.yaml` is included in this repo.
 
 Create digital products (not services):
 
-- Pro monthly / yearly — **$79** / **$790** per repo quantity
-- Team monthly / yearly — **$599** / **$5,990**
-- Readiness report once — **$1,500**
+- Pro monthly / yearly — **$79** / **$790** (up to 5 private repositories, quantity 1)
+- Team monthly / yearly — **$399** / **$3,990**
+- Readiness report once — **$2,500**
 
 Webhook endpoint: `POST https://<public-host>/v1/billing/webhook/dodo`
 

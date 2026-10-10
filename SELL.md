@@ -23,11 +23,11 @@ No sales call is required for Community or Pro/Team self-serve. Business, Self-h
 ## Stage 1 launch pricing (locked — Master Plan Appendix A)
 
 - Community: free local scans, one public repository, dashboard scan & BreakLab.
-- Pro: **$79** per repository per month for private scans, migration pull requests, and evidence history.
-- Team: **$599** per month for 20 repositories, policy gates, and shared evidence.
-- Business: **$1,499** per month for 75 repositories, company sign-in and priority support (invoiced).
+- Pro: **$79** per month for up to 5 private repositories: private scans, migration pull requests, and evidence history.
+- Team: **$399** per month for up to 25 repositories, policy gates, and shared evidence.
+- Business: **$999** per month for up to 100 repositories, company sign-in and priority support (invoiced).
 - Self-hosted: from **$18,000** per year, including offline evidence export.
-- Readiness report: **$1,500** once; the customer runs the scan and we sign the findings. It doubles as the PCI DSS 4.0.1 requirement 12.3.3 cryptographic inventory.
+- Readiness report: **$2,500** once; the customer runs the scan and we sign the findings. It doubles as the PCI DSS 4.0.1 requirement 12.3.3 cryptographic inventory.
 - Migration pilot: from **$7,500**, a fixed-scope staging engagement (invoiced).
 
 Annual = 10× monthly (two months free). Founding offer: first 25 customers, 40% off for 12 months (applied at payment).

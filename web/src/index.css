@@ -233,7 +233,7 @@ button.icon {
 }
 button.icon:hover:not(:disabled) { background: var(--panel-border); color: var(--text); box-shadow: none; }
 
-input[type='text'], input[type='number'], input[type='password'], textarea, select {
+input[type='text'], input[type='email'], input[type='url'], input[type='number'], input[type='password'], textarea, select {
   font-family: var(--mono);
   font-size: 13px;
   background: var(--bg-1);

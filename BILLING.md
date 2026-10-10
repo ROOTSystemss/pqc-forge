@@ -7,11 +7,11 @@ Status: **self-serve subscription path is in code** on this branch. Hosted deplo
 | Plan | Price | Covers |
 |---|---|---|
 | Community | Free | Local CLI, one **public** repository in CI, dashboard scan & BreakLab, migrate |
-| Pro | **$79** per repository / month ($790 / year) | Private repositories, CI gate, migration PRs, evidence history, all hosted job types |
-| Team | **$599** / month ($5,990 / year) | 20 repositories, policy gates, shared evidence |
-| Business | **$1,499** / month, invoiced | 75 repositories, company sign-in, priority support; set with `pqc-forge plan-set` |
+| Pro | **$79** / month ($790 / year) | Up to 5 private repositories, CI gate, migration PRs, evidence history, all hosted job types |
+| Team | **$399** / month ($3,990 / year) | Up to 25 repositories, policy gates, shared evidence |
+| Business | **$999** / month, invoiced | Up to 100 repositories, company sign-in, priority support; set with `pqc-forge plan-set` |
 | Self-hosted | from **$18,000** / year, invoiced | Set by an operator with `pqc-forge plan-set` |
-| Readiness report | **$1,500** once | One credit for a signed readiness report the customer generates |
+| Readiness report | **$2,500** once | One credit for a signed readiness report the customer generates |
 | Migration Pilot | from **$7,500**, invoiced | Fixed-scope staging pilot — not self-serve checkout |
 
 Annual billing is ten months' price (two months free). Source of truth: `src/billing/plans.js`.
@@ -48,7 +48,7 @@ Checkout stays off (HTTP 503 with a plain message) until products + keys are set
 ## Before going live (ROOT blockers)
 
 1. **Export control.** PQC Forge is cryptographic software. Get an export-classification review before selling outside the US and EU, and block sanctioned countries at checkout (see SELL.md).
-2. **Dodo product type.** Confirm with Dodo that the $1,500 self-serve report counts as a digital product, not a service. Dodo does not allow services. Create products at Stage 1 prices.
+2. **Dodo product type.** Confirm with Dodo that the $2,500 self-serve report counts as a digital product, not a service. Dodo does not allow services. Create products at Stage 1 prices.
 3. **Hosting.** Deploy API + built dashboard (see `DEPLOY.md` / `render.yaml`). Bind beyond loopback only behind TLS. Set `PQC_FORGE_API_HOST`, `PQC_FORGE_PUBLIC_URL`, and secrets.
 4. **Founding coupon.** Configure the 40% / 12-month offer in Dodo for the first 25 customers.
 

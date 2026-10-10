@@ -7,6 +7,7 @@ import { createApiServer, provisionTenant } from '../src/api/server.js';
 import { isPrivateAddress, resolvePublicTarget } from '../src/api/hosted-safety.js';
 import { generateSigningKey } from '../src/signing.js';
 import { createMigrationReceipt } from '../src/breaklab/receipt.js';
+import { setManualPlan } from '../src/billing/entitlements.js';
 
 // The hosted API is shared by strangers: no request may reach another tenant's
 // files, the server's own filesystem, programs on the host, or its private
@@ -19,8 +20,11 @@ async function startServer(options = {}) {
   return { apiHome, base: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
+// Paying (Business) tenants: these tests are about what a paid account still may NOT do on a
+// shared host, past the plan gate that stops free accounts earlier.
 async function tenant(apiHome, name) {
   const { tenantId, apiKey } = await provisionTenant(apiHome, name);
+  await setManualPlan(apiHome, tenantId, { plan: 'business', until: '2099-01-01T00:00:00.000Z' });
   return { tenantId, headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' } };
 }
 
