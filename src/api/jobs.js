@@ -16,8 +16,9 @@ import {
   createMigrationReceipt, createProtocolReceipt, createReceipt,
   createStagingReceipt, createTlsReceipt, verifyReceipt
 } from '../breaklab/receipt.js';
-import { tenantJobsDirectory } from './tenants.js';
+import { tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { resolveWorkspacePath } from './workspace.js';
+import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
 
 const JOB_SCHEMA = 'pqc-forge.job/v1';
 const TERMINAL_STATES = new Set(['succeeded', 'failed']);
@@ -80,9 +81,15 @@ const HANDLERS = {
     return { migration, receipt };
   },
 
-  async rollback({ params }) {
+  async rollback({ apiHome, tenantId, params, signingKey }) {
     const receipt = await requireValidReceipt(params.migrationReceipt, 'pqc-forge.migration-receipt/v1', 'migrationReceipt');
-    return rollbackMigration(receipt, { write: Boolean(params.write) });
+    // Only a receipt this server signed, for one of the caller's own workspaces: anyone can sign a
+    // receipt with their own key and name any folder on the host as its root.
+    return rollbackMigration(receipt, {
+      write: Boolean(params.write),
+      trustedPublicKeys: [signingKey.publicKey],
+      allowedRoot: tenantWorkspacesDirectory(apiHome, tenantId)
+    });
   },
 
   async 'pr-pack'({ apiHome, tenantId, jobDir, params, signingKey }) {
@@ -96,8 +103,9 @@ const HANDLERS = {
     return { ...result, files: await fs.readdir(output) };
   },
 
-  async verify({ params, signingKey }) {
-    const evidence = await verifyTls(params.target, { insecure: Boolean(params.insecure) });
+  async verify({ params, signingKey, safety }) {
+    const { address } = await resolvePublicTarget(params.target, { allowPrivateTargets: safety.allowPrivateTargets });
+    const evidence = await verifyTls(params.target, { insecure: Boolean(params.insecure), connectAddress: address });
     const receipt = createTlsReceipt(evidence, signingKey);
     return { evidence, receipt };
   },
@@ -213,7 +221,8 @@ export const JOB_TYPES = Object.keys(HANDLERS);
 export function createJobQueue({
   apiHome, resolveSigningKey,
   globalConcurrency = DEFAULT_GLOBAL_CONCURRENCY, tenantConcurrency = DEFAULT_TENANT_CONCURRENCY, dockerConcurrency = DEFAULT_DOCKER_CONCURRENCY,
-  handlers = HANDLERS // overridable so tests can exercise the scheduler deterministically without real work
+  handlers = HANDLERS, // overridable so tests can exercise the scheduler deterministically without real work
+  safety = safetyOptionsFromEnv() // see hosted-safety.js
 }) {
   const pending = [];
   const running = new Map(); // jobId -> { tenantId, isDocker }
@@ -268,7 +277,7 @@ export function createJobQueue({
         await persist(entry.tenantId, entry.jobId, entry.record);
       };
       const result = await handlers[entry.record.type]({
-        apiHome, tenantId: entry.tenantId, jobId: entry.jobId, jobDir, params: entry.record.params, signingKey, reportProgress
+        apiHome, tenantId: entry.tenantId, jobId: entry.jobId, jobDir, params: entry.record.params, signingKey, reportProgress, safety
       });
       await fs.writeFile(path.join(jobDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
       entry.record.status = 'succeeded';
@@ -297,6 +306,9 @@ export function createJobQueue({
 
   async function submit(tenantId, type, params) {
     if (!handlers[type]) throw new Error(`Unknown job type '${type}'. Expected one of: ${JOB_TYPES.join(', ')}.`);
+    if (HOST_EXECUTION_JOB_TYPES.has(type) && !safety.allowHostExecution) {
+      throw new Error(`'${type}' runs programs on the server, so it is off on this API. Run it with the pqc-forge CLI or the GitHub Action on your own runner.`);
+    }
     const jobId = `j_${randomBytes(8).toString('hex')}`;
     const jobDir = jobDirectory(apiHome, tenantId, jobId);
     await fs.mkdir(jobDir, { recursive: true });

@@ -109,7 +109,7 @@ function mockSubscriptionEvent(tenantId, item, quantity) {
  * authenticated request to another tenant's data or to an arbitrary host
  * path.
  */
-export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, webDistPath = null, billingEnv = process.env, fetchImpl = globalThis.fetch } = {}) {
+export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, safety, webDistPath = null, billingEnv = process.env, fetchImpl = globalThis.fetch } = {}) {
   if (!apiHome) throw new Error('createApiServer requires apiHome.');
   const resolveSigningKey = async () => (await loadSigningKey(signingKeyPath)).key;
   const queue = createJobQueue({
@@ -117,7 +117,8 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     ...(globalConcurrency !== undefined ? { globalConcurrency } : {}),
     ...(tenantConcurrency !== undefined ? { tenantConcurrency } : {}),
     ...(dockerConcurrency !== undefined ? { dockerConcurrency } : {}),
-    ...(handlers !== undefined ? { handlers } : {})
+    ...(handlers !== undefined ? { handlers } : {}),
+    ...(safety !== undefined ? { safety } : {})
   });
   let reconciled = false;
 
