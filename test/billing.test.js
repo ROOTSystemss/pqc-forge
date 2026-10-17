@@ -107,7 +107,7 @@ test('mock checkout applies Pro immediately without Dodo', async () => {
   const plans = await (await fetch(`${ctx.base}/v1/plans`)).json();
   assert.equal(plans.checkoutAvailable, true);
   assert.equal(plans.billingProvider, 'mock');
-  const r = await (await post(ctx, '/v1/billing/checkout', { plan: 'team', interval: 'month', returnUrl: 'http://127.0.0.1:8787/?tab=billing' })).json();
+  const r = await (await post(ctx, '/v1/billing/checkout', { plan: 'team', interval: 'month', country: 'US', returnUrl: 'http://127.0.0.1:8787/?tab=billing' })).json();
   assert.match(r.url, /checkout=success/);
   assert.match(r.url, /mock=1/);
   const sub = await (await fetch(`${ctx.base}/v1/subscription`, { headers: ctx.headers })).json();
@@ -212,12 +212,58 @@ test('checkout sends the right product, quantity and account to the provider', a
   const calls = [];
   const fetchImpl = async (url, init) => { calls.push({ url, body: JSON.parse(init.body), auth: init.headers.authorization }); return new Response(JSON.stringify({ checkout_url: 'https://checkout.example/abc', session_id: 'cks_1' }), { status: 200 }); };
   const ctx = await start({ fetchImpl });
-  const r = await (await post(ctx, '/v1/billing/checkout', { plan: 'pro', interval: 'year', quantity: 4 })).json();
+  const r = await (await post(ctx, '/v1/billing/checkout', { plan: 'pro', interval: 'year', quantity: 4, country: 'de' })).json();
   assert.equal(r.url, 'https://checkout.example/abc');
   assert.equal(calls[0].url, 'https://test.dodopayments.com/checkouts');
   assert.deepEqual(calls[0].body.product_cart, [{ product_id: 'pdt_pro_y', quantity: 4 }]);
   assert.equal(calls[0].body.metadata.tenant_id, ctx.tenantId);
   assert.equal((await post(ctx, '/v1/billing/checkout', { plan: 'selfhosted' })).status, 400, 'invoiced plans are not sold at checkout');
+  await ctx.close();
+});
+
+test('export control: checkout needs a country and refuses sanctioned ones', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => { calls.push(JSON.parse(init.body)); return new Response(JSON.stringify({ checkout_url: 'https://checkout.example/abc' }), { status: 200 }); };
+  const ctx = await start({ fetchImpl });
+  assert.equal((await post(ctx, '/v1/billing/checkout', { plan: 'pro' })).status, 400, 'no country chosen');
+  for (const country of ['IR', 'kp', 'RU', 'CU', 'SY', 'BY']) {
+    const r = await post(ctx, '/v1/billing/checkout', { plan: 'pro', country });
+    assert.equal(r.status, 451, country);
+    assert.match((await r.json()).error, /export-control/);
+  }
+  assert.equal((await post(ctx, '/v1/billing/checkout', { item: 'report', country: 'IR' })).status, 451, 'the report too');
+  assert.equal(calls.length, 0, 'no checkout was created for a refused buyer');
+  assert.equal((await post(ctx, '/v1/billing/checkout', { item: 'report', country: 'IN' })).status, 200);
+  assert.equal(JSON.stringify(calls).includes('IN'), false, 'the country is not sent on or kept');
+  await ctx.close();
+});
+
+test('export control: the operator can replace the list', async () => {
+  const ctx = await start({ billingEnv: { ...BILLING_ENV, PQC_FORGE_BLOCKED_COUNTRIES: 'XX, yy' }, fetchImpl: async () => new Response(JSON.stringify({ checkout_url: 'https://checkout.example/abc' }), { status: 200 }) });
+  assert.equal((await post(ctx, '/v1/billing/checkout', { plan: 'pro', country: 'YY' })).status, 451);
+  assert.equal((await post(ctx, '/v1/billing/checkout', { plan: 'pro', country: 'RU' })).status, 200);
+  await ctx.close();
+});
+
+test('export control: a payment billed to a sanctioned country unlocks nothing; cancellations still apply', async () => {
+  const ctx = await start();
+  const blocked = subEvent('subscription.active', ctx.tenantId, { status: 'active', at: new Date(Date.now() - 2000).toISOString() });
+  blocked.data.billing = { country: 'IR' };
+  const r = await (await deliver(ctx, blocked)).json();
+  assert.equal(r.applied, false);
+  assert.match(r.reason, /export control/);
+  assert.equal((await entitlement(ctx.apiHome, ctx.tenantId)).plan, 'community');
+  const report = await (await deliver(ctx, { type: 'payment.succeeded', timestamp: new Date().toISOString(), data: { payment_id: 'pay_2', product_id: PRODUCTS.report, billing: { country: 'KP' }, metadata: { tenant_id: ctx.tenantId, item: 'report' } } })).json();
+  assert.equal(report.applied, false);
+  assert.equal((await entitlement(ctx.apiHome, ctx.tenantId)).reportCredits ?? 0, 0);
+  const ok = subEvent('subscription.active', ctx.tenantId, { status: 'active', at: new Date(Date.now() - 1000).toISOString() });
+  ok.data.billing = { country: 'US' };
+  assert.equal((await (await deliver(ctx, ok)).json()).applied, true);
+  const cancel = subEvent('subscription.cancelled', ctx.tenantId, { status: 'cancelled' });
+  cancel.data.billing = { country: 'RU' };
+  assert.equal((await (await deliver(ctx, cancel)).json()).applied, true, 'taking access away is never blocked');
+  const stored = await fs.readFile(path.join(ctx.apiHome, 'tenants', ctx.tenantId, 'subscription.json'), 'utf8');
+  assert.doesNotMatch(stored, /country|"RU"|"US"/i, 'the billing country is not stored');
   await ctx.close();
 });
 

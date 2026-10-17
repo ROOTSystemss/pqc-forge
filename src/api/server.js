@@ -11,6 +11,7 @@ import { VERSION } from '../version.js';
 import { publicCatalog, SELF_SERVE_PLANS, INTERVALS } from '../billing/plans.js';
 import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent, assertJobAllowed } from '../billing/entitlements.js';
 import { checkoutProvider, providerByName } from '../billing/providers.js';
+import { normalizeCountry, isBlockedCountry, grantsAccess } from '../billing/exportControl.js';
 import { loadTenant } from './tenants.js';
 
 const MAX_BODY_BYTES = 68 * 1024 * 1024; // above the 64 MiB workspace cap, plus headroom for JSON overhead
@@ -261,6 +262,9 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         if (item !== 'report' && (!SELF_SERVE_PLANS.includes(body.plan) || !INTERVALS.includes(body.interval ?? 'month'))) {
           throw new HttpError(400, 'Choose plan "pro" or "team" and interval "month" or "year", or item "report". Business and Self-hosted are invoiced — contact RootSystems.');
         }
+        const country = normalizeCountry(body.country);
+        if (!country) throw new HttpError(400, 'Choose the country you are buying from (two-letter code, e.g. "US").');
+        if (isBlockedCountry(country, billingEnv)) throw new HttpError(451, 'PQC Forge is cryptographic software and cannot be sold to buyers in this country under export-control and sanctions rules.');
         const quantity = Math.min(500, Math.max(1, Number.parseInt(body.quantity ?? 1, 10) || 1));
         const returnUrl = resolveReturnUrl(body.returnUrl, billingEnv);
         let checkout;
@@ -287,6 +291,12 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         if (!normalized) return { received: true, applied: false, reason: 'event not relevant to PQC Forge' };
         if (!(await loadTenant(apiHome, normalized.tenantId))) return { received: true, applied: false, reason: 'unknown account' };
         if (!(await claimEvent(apiHome, provider.name, normalized.eventId))) return { received: true, applied: false, reason: 'duplicate delivery' };
+        // The billing country the provider saw wins over what was chosen at checkout; a sanctioned
+        // country never gets access (cancellations still apply).
+        if (grantsAccess(normalized) && isBlockedCountry(normalized.billingCountry, billingEnv)) {
+          console.warn(`[billing] export control: refused ${normalized.kind} for account ${normalized.tenantId} (billing country blocked); refund ${normalized.providerRef ?? 'the payment'}`);
+          return { received: true, applied: false, reason: 'export control: billing country is blocked; refund this payment' };
+        }
         const result = await applySubscriptionEvent(apiHome, normalized.tenantId, normalized);
         return { received: true, ...result };
       }

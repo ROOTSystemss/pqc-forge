@@ -10,6 +10,8 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [country, setCountry] = useState('');
+  const countryOk = /^[A-Z]{2}$/.test(country);
 
   async function refresh() {
     setError(null);
@@ -54,7 +56,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
     setNotice(null);
     try {
       const returnUrl = `${window.location.origin}${window.location.pathname}?tab=billing`;
-      const { url } = await client.checkout({ ...body, returnUrl });
+      const { url } = await client.checkout({ ...body, country, returnUrl });
       window.location.assign(url);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -74,6 +76,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
 
   const selfServe = (plans?.plans ?? []).filter((p) => p.selfServe);
   const report = plans?.oneTime?.[0];
+  const business = (plans?.plans ?? []).find((p) => p.id === 'business');
   const slots = sub?.repoLimit == null ? 'unlimited' : `${sub.reposInUse} / ${sub.repoLimit}`;
 
   return (
@@ -119,6 +122,20 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
             {plans.foundingOffer && (
               <p className="muted small">{plans.foundingOffer.note}</p>
             )}
+            <div>
+              <label htmlFor="buyer-country">Country you are buying from</label>
+              <input
+                id="buyer-country"
+                type="text"
+                inputMode="text"
+                autoComplete="country"
+                maxLength={2}
+                placeholder="US"
+                value={country}
+                onChange={(event) => setCountry(event.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase())}
+              />
+              <p className="muted small">Two-letter code. PQC Forge is cryptographic software, so export-control rules apply; it is checked, not stored.</p>
+            </div>
             {selfServe.some((plan) => plan.perRepo) && <div>
               <label htmlFor="pro-qty">Pro repositories</label>
               <input
@@ -143,7 +160,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
                     <button
                       className="primary"
                       type="button"
-                      disabled={Boolean(busy)}
+                      disabled={Boolean(busy) || !countryOk}
                       onClick={() => void startCheckout({ plan: plan.id, interval: 'month', quantity: plan.perRepo ? quantity : 1 })}
                     >
                       {busy === `${plan.id}:month` ? <><Spinner /> Working…</> : 'Monthly'}
@@ -151,7 +168,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
                     <button
                       className="ghost"
                       type="button"
-                      disabled={Boolean(busy)}
+                      disabled={Boolean(busy) || !countryOk}
                       onClick={() => void startCheckout({ plan: plan.id, interval: 'year', quantity: plan.perRepo ? quantity : 1 })}
                     >
                       {busy === `${plan.id}:year` ? <><Spinner /> Working…</> : 'Annual'}
@@ -164,12 +181,14 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
               <div className="billing-plan-card">
                 <h3>{report.name}</h3>
                 <p className="billing-price">${report.priceUsdOnce}<span className="muted small"> once</span></p>
-                <button className="primary" type="button" disabled={Boolean(busy)} onClick={() => void startCheckout({ item: 'report' })}>
+                <button className="primary" type="button" disabled={Boolean(busy) || !countryOk} onClick={() => void startCheckout({ item: 'report' })}>
                   {busy === 'report' ? <><Spinner /> Working…</> : 'Buy report credit'}
                 </button>
               </div>
             )}
-            <p className="muted small">Business ($1,499/mo) and Self-hosted (from $18,000/yr) are invoiced — contact RootSystems.</p>
+            <p className="muted small">
+              Business{business?.priceUsdMonthly ? ` ($${business.priceUsdMonthly.toLocaleString('en-US')}/mo)` : ''} and Self-hosted (from $18,000/yr) are invoiced — contact RootSystems.
+            </p>
           </>
         )}
       </Panel>

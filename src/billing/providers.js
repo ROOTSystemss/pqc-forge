@@ -78,7 +78,7 @@ export function dodoProvider(env = process.env, fetchImpl = globalThis.fetch) {
       const tenantId = data.metadata?.tenant_id;
       const item = data.metadata?.item ?? itemFor(data.product_id);
       if (!tenantId || !item) return null;
-      const base = { eventId: event.__id, tenantId, provider: 'dodo', providerRef: data.subscription_id ?? data.payment_id ?? null, occurredAt: event.timestamp ?? new Date().toISOString() };
+      const base = { eventId: event.__id, tenantId, provider: 'dodo', providerRef: data.subscription_id ?? data.payment_id ?? null, occurredAt: event.timestamp ?? new Date().toISOString(), billingCountry: data.billing?.country ?? null };
       if (item === 'report') {
         return event.type === 'payment.succeeded' ? { ...base, kind: 'report', credits: 1 } : null;
       }

@@ -23,6 +23,7 @@ Annual billing is ten months' price (two months free). Source of truth: `src/bil
 - **Self-serve signup**: `POST /v1/signup` with `{ name, email? }` creates a Community tenant and returns the API key **once**. The dashboard “Create free account” flow calls this.
 - **Accounts** can still be provisioned by an operator (`tenant-create`); the API key is shown once, only its hash is stored.
 - **Checkout**: `POST /v1/billing/checkout` with `{ plan: "pro"|"team", interval: "month"|"year", quantity }` or `{ item: "report" }` returns the provider's checkout URL. The account id travels in the checkout metadata. `returnUrl` may be `https://…` or local `http://localhost` / `http://127.0.0.1` for demo.
+- **Export control**: checkout also needs `country` (two-letter code). Buyers in Belarus, Cuba, Iran, North Korea, Russia and Syria get HTTP 451 and no checkout is created; `PQC_FORGE_BLOCKED_COUNTRIES="CU,IR,..."` replaces the list. The webhook checks the billing country Dodo reports too, so a wrong answer at checkout unlocks nothing (the response and the server log say to refund it); cancellations always apply. The country is checked, never stored or sent on. This is a screen, not the legal review below: it cannot see regions or restricted parties.
 - **Webhook**: `POST /v1/billing/webhook/<provider>` verifies the signature (Standard Webhooks for Dodo), ignores repeated deliveries by event id, and ignores events older than the last one applied, so a late retry cannot undo a cancellation. `on_hold` keeps access while a renewal is retried.
 - **Mock billing**: set `PQC_FORGE_BILLING_PROVIDER=mock` to apply Pro/Team/report entitlements immediately at checkout (no Dodo keys). For local demos and CI.
 - **Gate**: the GitHub Action's "Check PQC Forge plan" step calls `POST /v1/gate/check`. Public repositories need no key. Private repositories need a Pro or Team key. Hosted API jobs also enforce plan: Community may `scan`, `migrate`, `breaklab`, and `breaklab-grid`; paid plans unlock PR packs, verify, runtime/staging/protocol jobs.
@@ -47,7 +48,7 @@ Checkout stays off (HTTP 503 with a plain message) until products + keys are set
 
 ## Before going live (ROOT blockers)
 
-1. **Export control.** PQC Forge is cryptographic software. Get an export-classification review before selling outside the US and EU, and block sanctioned countries at checkout (see SELL.md).
+1. **Export control.** PQC Forge is cryptographic software. Get an export-classification review before selling outside the US and EU (see SELL.md). The sanctioned-country block at checkout and on the webhook is built (`src/billing/exportControl.js`); the review decides whether the list needs changing.
 2. **Dodo product type.** Confirm with Dodo that the $2,500 self-serve report counts as a digital product, not a service. Dodo does not allow services. Create products at Stage 1 prices.
 3. **Hosting.** Deploy API + built dashboard (see `DEPLOY.md` / `render.yaml`). Bind beyond loopback only behind TLS. Set `PQC_FORGE_API_HOST`, `PQC_FORGE_PUBLIC_URL`, and secrets.
 4. **Founding coupon.** Configure the 40% / 12-month offer in Dodo for the first 25 customers.

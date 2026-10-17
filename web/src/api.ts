@@ -78,7 +78,7 @@ export class PqcForgeClient {
     return this.request<SubscriptionResponse>('/v1/subscription');
   }
 
-  checkout(body: { plan?: string; interval?: string; quantity?: number; item?: string; returnUrl?: string }) {
+  checkout(body: { plan?: string; interval?: string; quantity?: number; item?: string; country?: string; returnUrl?: string }) {
     return this.request<{ url: string; ref: string | null }>('/v1/billing/checkout', {
       method: 'POST', body: JSON.stringify(body)
     });
