@@ -16,7 +16,23 @@ const port = Number(process.env.PQC_FORGE_API_PORT ?? 8787);
 // proxy in front of it (see the warning below and README.md).
 const host = process.env.PQC_FORGE_API_HOST || '127.0.0.1';
 const apiHome = path.resolve(process.env.PQC_FORGE_API_HOME ?? './pqc-forge-api-data');
-const signingKeyPath = process.env.PQC_FORGE_SIGNING_KEY || null;
+// The hosted signing key lives with the tenant data (the persistent disk), so every report and receipt
+// keeps verifying against the same key across restarts and deploys. Created once if missing; set
+// PQC_FORGE_SIGNING_KEY to use an organisation-managed key file instead.
+async function hostedSigningKeyPath() {
+  if (process.env.PQC_FORGE_SIGNING_KEY) return process.env.PQC_FORGE_SIGNING_KEY;
+  const keyPath = path.join(apiHome, 'signing-key.json');
+  try {
+    await fs.access(keyPath);
+  } catch {
+    const { generateSigningKey } = await import('../src/signing.js');
+    await fs.mkdir(apiHome, { recursive: true });
+    await fs.writeFile(keyPath, `${JSON.stringify(generateSigningKey(), null, 2)}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' }).catch((error) => { if (error.code !== 'EEXIST') throw error; });
+    console.log(`Created the hosted signing key at ${keyPath} (keep this disk backed up).`);
+  }
+  return keyPath;
+}
+const signingKeyPath = await hostedSigningKeyPath();
 
 // Serve the built dashboard from the same origin as the API when it has
 // been built (`npm run web:build`). Same-origin means the dashboard needs

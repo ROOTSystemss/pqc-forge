@@ -100,6 +100,18 @@ export class PqcForgeClient {
     return this.request<T>(`/v1/jobs/${jobId}/result`);
   }
 
+  /** A job's downloadable file (the readiness report), as a Blob to save. */
+  async getJobFile(jobId: string, name: string): Promise<Blob> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/v1/jobs/${jobId}/files/${name}`, { headers: this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {} });
+    } catch {
+      throw new ApiError(0, `Could not reach ${this.baseUrl}.`);
+    }
+    if (!response.ok) throw new ApiError(response.status, `Download failed (${response.status}).`);
+    return response.blob();
+  }
+
   listJobs(params: { limit?: number; status?: string; type?: string } = {}) {
     const query = new URLSearchParams();
     if (params.limit) query.set('limit', String(params.limit));

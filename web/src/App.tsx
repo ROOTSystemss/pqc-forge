@@ -13,6 +13,7 @@ import { BreakLabGridTab } from './components/BreakLabGridTab';
 import { JobsTab } from './components/JobsTab';
 import { ReceiptTab } from './components/ReceiptTab';
 import { BillingTab } from './components/BillingTab';
+import { ReportTab } from './components/ReportTab';
 import './billing.css';
 
 const STORAGE_BASE_URL = 'pqcf.baseUrl';
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'grid', label: 'BreakLab Grid' },
   { id: 'jobs', label: 'Jobs' },
   { id: 'receipt', label: 'Verify Receipt' },
+  { id: 'report', label: 'Readiness Report' },
   { id: 'billing', label: 'Billing' }
 ] as const;
 
@@ -112,6 +114,7 @@ export default function App() {
         {tab === 'grid' && <BreakLabGridTab client={client} />}
         {tab === 'jobs' && <JobsTab client={client} />}
         {tab === 'receipt' && <ReceiptTab client={client} />}
+        {tab === 'report' && <ReportTab client={client} />}
         {tab === 'billing' && <BillingTab client={client} />}
       </main>
     </div>

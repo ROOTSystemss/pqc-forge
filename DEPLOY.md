@@ -24,7 +24,7 @@ A sample `render.yaml` is included in this repo.
 | `DODO_PAYMENTS_WEBHOOK_KEY` | prod | `whsec_…` |
 | `DODO_ENVIRONMENT` | prod | `test_mode` then `live_mode` |
 | `PQC_FORGE_DODO_PRODUCTS` | prod | JSON map of five product IDs (see BILLING.md) |
-| `PQC_FORGE_SIGNING_KEY` | recommended | Persistent ML-DSA signing key path |
+| `PQC_FORGE_SIGNING_KEY` | optional | Path to an organisation-managed ML-DSA key. Without it, the API creates `signing-key.json` once inside `PQC_FORGE_API_HOME` (the persistent disk) and reuses it, so receipts and readiness reports keep verifying across deploys. Back up the disk. |
 | `PQC_FORGE_WEB_DIST` | optional | Defaults to `web/dist` after build |
 
 **Port note:** `bin/pqc-forge-api.js` reads `PQC_FORGE_API_PORT` (default 8787). On Render, set `PQC_FORGE_API_PORT` to `$PORT` or adjust the start command to export it.
@@ -45,6 +45,7 @@ Optional: founding coupon 40% off for 12 months (first 25 customers).
 
 1. Open `/` → **Create free account** → land in dashboard on Community.
 2. Run a **Scan** on the sample workspace.
+2b. With a report credit (mock billing or a test purchase), open **Readiness Report**, generate one, and download the HTML and signed JSON; check the JSON on **Verify Receipt**.
 3. Open **Billing** → with mock or test-mode Dodo, upgrade to Pro → confirm `GET /v1/subscription` shows `pro`.
 4. Confirm private repo Action gate with a Pro key.
 5. Cancel path: return URL with `?checkout=cancel` shows a clear message.
