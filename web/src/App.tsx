@@ -114,7 +114,7 @@ export default function App() {
         {tab === 'grid' && <BreakLabGridTab client={client} />}
         {tab === 'jobs' && <JobsTab client={client} />}
         {tab === 'receipt' && <ReceiptTab client={client} />}
-        {tab === 'report' && <ReportTab client={client} />}
+        {tab === 'report' && <ReportTab client={client} onBuyCredit={() => selectTab('billing')} />}
         {tab === 'billing' && <BillingTab client={client} />}
       </main>
     </div>

@@ -16,7 +16,7 @@ interface ReportJobResult {
 
 // The paid readiness report: upload code/configuration and list live endpoints; PQC Forge scans,
 // checks and signs, and the report is downloaded as one HTML page plus the signed JSON.
-export function ReportTab({ client }: { client: PqcForgeClient | null }) {
+export function ReportTab({ client, onBuyCredit }: { client: PqcForgeClient | null; onBuyCredit?: () => void }) {
   const [files, setFiles] = useState<WorkspaceFile[]>(EXAMPLE_WORKSPACES['Nginx (classical groups)']);
   const [organization, setOrganization] = useState('');
   const [endpoints, setEndpoints] = useState('');
@@ -66,7 +66,7 @@ export function ReportTab({ client }: { client: PqcForgeClient | null }) {
     <div className="tab-grid">
       <Panel title="Readiness report">
         <p className="muted small">A signed post-quantum readiness report built from your real code and live endpoints: readiness score and stage, a fix-first plan, every finding with file and line, deadlines (NIST, CNSA 2.0, EU) and where it counts as evidence (PCI DSS 12.3.3, ISO 27001 A.8.24, NIS2, DORA). One report credit per report; the credit is used only when the report is produced.</p>
-        <p className="small">Report credits: <strong>{credits ?? '…'}</strong>{noCredit && <> · <a href="?tab=billing">buy a report credit</a></>}</p>
+        <p className="small">Report credits: <strong>{credits ?? '…'}</strong>{noCredit && <> · <button type="button" className="link-button" onClick={onBuyCredit}>buy a report credit</button></>}</p>
         <label htmlFor="report-org">Organization name (shown on the report)</label>
         <input id="report-org" type="text" maxLength={120} value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Acme Payments Ltd" />
         <label htmlFor="report-endpoints">Live endpoints to check (up to 10, public only)</label>

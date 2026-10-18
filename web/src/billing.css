@@ -55,3 +55,6 @@
   word-break: break-all;
   font-size: 11px;
 }
+
+/* A button that reads as an inline link (in-app navigation without reloading). */
+.link-button { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
