@@ -106,6 +106,12 @@ export async function entitlement(apiHome, tenantId, now = Date.now()) {
  * Private-repo CI remains gated separately via checkRepository / Action.
  */
 export function assertJobAllowed(ent, type, _params = {}) {
+  // The readiness report is bought on its own (one credit per report), on any plan.
+  if (type === 'readiness-report') {
+    return ent.reportCredits > 0
+      ? { allowed: true, plan: ent.plan }
+      : { allowed: false, plan: ent.plan, reason: 'The readiness report needs a report credit ($2,500 once). Buy one from the Billing tab.' };
+  }
   if (ent.plan !== 'community') return { allowed: true, plan: ent.plan };
   if (COMMUNITY_JOB_TYPES.includes(type) || type === 'migrate') return { allowed: true, plan: ent.plan };
   return {

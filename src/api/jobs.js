@@ -19,6 +19,7 @@ import {
 import { tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { resolveWorkspacePath } from './workspace.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
+import { buildReadinessReport, signReport, renderReportHtml } from '../readinessReport.js';
 
 const JOB_SCHEMA = 'pqc-forge.job/v1';
 const TERMINAL_STATES = new Set(['succeeded', 'failed']);
@@ -32,6 +33,9 @@ const DEFAULT_GLOBAL_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_CONCURRE
 const DEFAULT_TENANT_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_TENANT_CONCURRENCY ?? 2);
 const DEFAULT_DOCKER_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_DOCKER_CONCURRENCY ?? 1);
 const DOCKER_JOB_TYPES = new Set(['protocol-lab']);
+const MAX_REPORT_ENDPOINTS = 10;
+// Files a job may hand back for download (GET /v1/jobs/:id/files/:name), by exact name only.
+export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8' };
 
 // Every jobId this module ever generates (submit(), below) matches this
 // exact format. Enforcing it here — the same way tenants.js and
@@ -141,6 +145,39 @@ const HANDLERS = {
   async 'validate-corpus'({ jobDir, params, signingKey }) {
     const manifestPath = await writeTempJson(jobDir, 'corpus-manifest.json', params.manifest);
     return validateCorpus(manifestPath, path.join(jobDir, 'validation'), { signingKey });
+  },
+
+  /**
+   * The paid post-quantum readiness report (src/readinessReport.js): a scan of an uploaded workspace,
+   * a dry-run of the supported migrations and live TLS checks of up to 10 public endpoints, scored,
+   * signed and rendered as one HTML page. One report credit is spent only once the report exists, so a
+   * failed run (an unreachable workspace, a bad parameter) never uses up what the customer paid for.
+   */
+  async 'readiness-report'({ apiHome, tenantId, jobDir, params, signingKey, safety }) {
+    const endpointsIn = Array.isArray(params.endpoints) ? params.endpoints.map((e) => String(e).trim()).filter(Boolean) : [];
+    if (endpointsIn.length > MAX_REPORT_ENDPOINTS) throw new Error(`List at most ${MAX_REPORT_ENDPOINTS} endpoints.`);
+    if (!params.workspaceId && !endpointsIn.length) throw new Error('Upload your code (a workspace) or list at least one endpoint to check.');
+    let scan = null, migration = null;
+    if (params.workspaceId) {
+      const { root: workspaceRoot } = resolveWorkspacePath(apiHome, tenantId, params.workspaceId, params.relativePath);
+      scan = await scanRepository(workspaceRoot);
+      migration = await migrateRepository(workspaceRoot, { write: false });
+    }
+    const endpoints = [];
+    for (const target of [...new Set(endpointsIn)]) {
+      try {
+        const { address } = await resolvePublicTarget(target, { allowPrivateTargets: safety.allowPrivateTargets });
+        endpoints.push({ target, ok: true, evidence: await verifyTls(target, { connectAddress: address }) });
+      } catch (error) {
+        endpoints.push({ target, ok: false, error: error.message });
+      }
+    }
+    const signed = signReport(buildReadinessReport({ organization: params.organization, scan, migration, endpoints }), signingKey);
+    const { useReportCredit } = await import('../billing/entitlements.js');
+    if (!(await useReportCredit(apiHome, tenantId))) throw new Error('No readiness report credit left. Buy one from the Billing tab.');
+    await fs.writeFile(path.join(jobDir, 'readiness-report.json'), JSON.stringify(signed, null, 2), 'utf8');
+    await fs.writeFile(path.join(jobDir, 'readiness-report.html'), renderReportHtml(signed), 'utf8');
+    return { schema: 'pqc-forge.readiness-report-job/v1', readiness: signed.readiness, summary: signed.summary, roadmap: signed.roadmap.map((s) => ({ priority: s.priority, title: s.title })), files: ['readiness-report.html', 'readiness-report.json'], receiptDigest: signed.receiptDigest };
   },
 
   async breaklab({ params, signingKey }) {
@@ -375,6 +412,18 @@ export function createJobQueue({
     }
   }
 
+  // One of a job's downloadable files (DOWNLOADABLE_JOB_FILES), by exact name only, for its own tenant.
+  async function getFile(tenantId, jobId, name) {
+    if (!JOB_ID_PATTERN.test(jobId ?? '') || !Object.hasOwn(DOWNLOADABLE_JOB_FILES, name)) return null;
+    if (!(await getJob(tenantId, jobId))) return null;
+    try {
+      return { body: await fs.readFile(path.join(jobDirectory(apiHome, tenantId, jobId), name)), contentType: DOWNLOADABLE_JOB_FILES[name] };
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
   /**
    * Reconcile job state left behind by a prior process (a crash or restart
    * mid-job). A 'running' record cannot be resumed — its in-memory work is
@@ -408,5 +457,5 @@ export function createJobQueue({
     schedule();
   }
 
-  return { submit, getJob, getResult, listJobs, reconcile, stats: () => ({ pending: pending.length, running: running.size }) };
+  return { submit, getJob, getResult, getFile, listJobs, reconcile, stats: () => ({ pending: pending.length, running: running.size }) };
 }

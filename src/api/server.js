@@ -226,6 +226,17 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       }
     },
     {
+      // A job's downloadable file (the readiness report as HTML or signed JSON), by exact name only.
+      method: 'GET', pattern: /^\/v1\/jobs\/([^/]+)\/files\/([a-z0-9.-]+)$/,
+      handler: async (req, res, [jobId, name], body, tenant) => {
+        const file = await queue.getFile(tenant.tenantId, jobId, name);
+        if (!file) throw new HttpError(404, 'No such file for this job.');
+        res.writeHead(200, { 'content-type': file.contentType, 'content-disposition': `attachment; filename="${name}"`, 'cache-control': 'no-store' });
+        res.end(file.body);
+        return null;
+      }
+    },
+    {
       method: 'GET', pattern: /^\/v1\/jobs\/([^/]+)\/result$/,
       handler: async (req, res, [jobId], body, tenant) => {
         const record = await queue.getJob(tenant.tenantId, jobId);
@@ -364,6 +375,7 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       const tenant = route.public ? null : await requireTenant(req);
       const body = req.method === 'GET' ? {} : route.raw ? await readRawBody(req) : await readJsonBody(req);
       const result = await route.handler(req, res, match.slice(1), body, tenant);
+      if (res.headersSent || res.writableEnded) return; // the handler wrote a file download itself
       send(res, route.status ?? 200, result);
     } catch (error) {
       const statusCode = error.statusCode ?? 500;
