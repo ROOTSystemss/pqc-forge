@@ -107,12 +107,12 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
       </Panel>
 
       <Panel title="Upgrade">
+        {/* Live QA 2026-11-02 E3: buyers saw an operator message ("checkout is not configured"). */}
         {!plans?.checkoutAvailable && (
-          <EmptyState
-            icon="◇"
-            message="Self-serve checkout is not configured on this host."
-            hint="Set Dodo product IDs and keys, or PQC_FORGE_BILLING_PROVIDER=mock for a local demo."
-          />
+          <div className="billing-contact" data-testid="billing-contact">
+            <p>Paid plans: contact <a href="mailto:hello@rootsystems.app">hello@rootsystems.app</a></p>
+            <p><a className="button" href="https://rootsystems.app/contact?topic=PQC%20Forge" target="_blank" rel="noopener">Talk to us about PQC Forge</a></p>
+          </div>
         )}
         {plans?.checkoutAvailable && (
           <>

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { CONTENT_TYPES, resolveStaticFile } from './static.js';
 import { authenticate, createTenant, tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
-import { createWorkspace, workspaceExists } from './workspace.js';
+import { createWorkspace, workspaceExists, resolveWorkspacePath } from './workspace.js';
 import { createJobQueue, JOB_TYPES } from './jobs.js';
 import { verifyReceipt } from '../breaklab/receipt.js';
 import { loadSigningKey } from '../signing.js';
@@ -196,9 +196,17 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       method: 'POST', pattern: /^\/v1\/jobs$/, status: 202,
       handler: async (req, res, params, body, tenant) => {
         if (typeof body.type !== 'string') throw new HttpError(400, `Body requires a job type: one of ${JOB_TYPES.join(', ')}.`);
+        // Live QA 2026-11-02 E2: an unknown type answered "needs Pro"; a missing workspace or a path that
+        // escapes it only failed later inside the job. Checked here, before the plan check.
+        if (!JOB_TYPES.includes(body.type)) throw new HttpError(400, `Unknown job type: ${String(body.type).slice(0, 60)}. Use one of: ${JOB_TYPES.join(', ')}.`);
+        const jobParams = body.params ?? {};
         const ent = await entitlement(apiHome, tenant.tenantId);
-        const gate = assertJobAllowed(ent, body.type, body.params ?? {});
+        const gate = assertJobAllowed(ent, body.type, jobParams);
         if (!gate.allowed) throw new HttpError(402, gate.reason);
+        if (jobParams.workspaceId !== undefined) {
+          try { resolveWorkspacePath(apiHome, tenant.tenantId, jobParams.workspaceId, jobParams.relativePath); } catch (error) { throw new HttpError(400, error.message.replace(/: .*$/, '.')); }
+          if (!(await workspaceExists(apiHome, tenant.tenantId, jobParams.workspaceId))) throw new HttpError(404, `No such workspace: ${jobParams.workspaceId}`);
+        }
         try {
           return await queue.submit(tenant.tenantId, body.type, body.params ?? {});
         } catch (error) {
@@ -357,6 +365,10 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     try {
       await ensureReconciled();
       const url = new URL(req.url, 'http://internal');
+      // E2: a path-traversal request gets a JSON 400 (it used to fall through to an HTML page).
+      let decodedPath;
+      try { decodedPath = decodeURIComponent(url.pathname); } catch { send(res, 400, { error: 'Invalid path.' }); return; }
+      if (/(^|[/\\])\.\.([/\\]|$)/.test(decodedPath) || /(^|\/)(%2e|\.){2}(\/|%2f|%5c|$)/i.test(req.url)) { send(res, 400, { error: 'Path traversal is not allowed.' }); return; }
       const route = routes.find((candidate) => candidate.method === req.method && candidate.pattern.test(url.pathname));
       if (!route) {
         if (req.method === 'GET' && resolvedWebDist && !url.pathname.startsWith('/v1/')) {

@@ -1,0 +1,55 @@
+# PQC Forge cross-check (E4e, 2026-11-02): an independent, AST-based rule set run with Semgrep. It is kept
+# separate from PQC Forge's own (regex) rules on purpose, so the two can disagree and the report lists where.
+rules:
+  - id: xc-python-rsa
+    languages: [python]
+    severity: WARNING
+    message: RSA key created (quantum-vulnerable)
+    pattern-either:
+      - pattern: rsa.generate_private_key(...)
+      - pattern: RSA.generate(...)
+  - id: xc-python-ecc
+    languages: [python]
+    severity: WARNING
+    message: Elliptic-curve key created (quantum-vulnerable)
+    pattern-either:
+      - pattern: ec.generate_private_key(...)
+      - pattern: Ed25519PrivateKey.generate()
+      - pattern: X25519PrivateKey.generate()
+      - pattern: ECC.generate(...)
+  - id: xc-go-rsa
+    languages: [go]
+    severity: WARNING
+    message: RSA key created (quantum-vulnerable)
+    pattern: rsa.GenerateKey(...)
+  - id: xc-go-ecc
+    languages: [go]
+    severity: WARNING
+    message: Elliptic-curve key created (quantum-vulnerable)
+    pattern-either:
+      - pattern: ecdsa.GenerateKey(...)
+      - pattern: ed25519.GenerateKey(...)
+  - id: xc-java-keypair
+    languages: [java]
+    severity: WARNING
+    message: RSA or EC key pair generator (quantum-vulnerable)
+    pattern-either:
+      - pattern: KeyPairGenerator.getInstance("RSA")
+      - pattern: KeyPairGenerator.getInstance("EC")
+  - id: xc-js-keypair
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: RSA or EC key pair generated (quantum-vulnerable)
+    pattern-either:
+      - pattern: $C.generateKeyPairSync("rsa", ...)
+      - pattern: $C.generateKeyPairSync("ec", ...)
+      - pattern: $C.generateKeyPair("rsa", ...)
+      - pattern: $C.generateKeyPair("ec", ...)
+  - id: xc-csharp-asym
+    languages: [csharp]
+    severity: WARNING
+    message: RSA or ECDsa key created (quantum-vulnerable)
+    pattern-either:
+      - pattern: RSA.Create(...)
+      - pattern: ECDsa.Create(...)
+      - pattern: ECDiffieHellman.Create(...)

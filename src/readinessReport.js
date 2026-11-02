@@ -16,11 +16,33 @@ const slash = (p) => String(p ?? '').replace(/\\/g, '/');
 
 // Outside deadlines a reader plans against. Wording is deliberately cautious: these are the published
 // positions at the time of writing; the report says to check the current text.
+// E4c (2026-11-02): each deadline names its source document. Check the current text before relying on a date.
 export const DEADLINES = [
-  { body: 'NIST IR 8547 (initial public draft)', text: 'RSA and elliptic-curve algorithms at 112-bit security deprecated after 2030 and disallowed after 2035.' },
-  { body: 'NSA CNSA 2.0 (US national security systems)', text: 'Web servers, browsers and cloud services to support and prefer CNSA 2.0 algorithms now, and use them exclusively by 2033.' },
-  { body: 'EU coordinated PQC roadmap (2025)', text: 'Member States and operators start the transition by end of 2026; high-risk use cases complete by 2030; as much as feasible by 2035.' },
+  { body: 'NIST FIPS 203, 204, 205 (final, August 2024)', text: 'ML-KEM, ML-DSA and SLH-DSA are published standards: the algorithms to migrate to.', source: 'https://csrc.nist.gov/pubs/fips/203/final' },
+  { body: 'NIST IR 8547 (initial public draft, November 2024)', text: 'RSA and elliptic-curve algorithms at 112-bit security deprecated after 2030 and disallowed after 2035.', source: 'https://csrc.nist.gov/pubs/ir/8547/ipd' },
+  { body: 'NSA CNSA 2.0 (US national security systems)', text: 'Web servers, browsers and cloud services to support and prefer CNSA 2.0 algorithms now, and use them exclusively by 2033; the full transition by 2035.', source: 'https://media.defense.gov/2022/Sep/07/2003071834/-1/-1/0/CSA_CNSA_2.0_ALGORITHMS_.PDF' },
+  { body: 'US NSM-10 (May 2022) and OMB M-23-02 (November 2022)', text: 'US federal goal: mitigate quantum risk as much as feasible by 2035; agencies inventory quantum-vulnerable cryptography every year.', source: 'https://www.whitehouse.gov/wp-content/uploads/2022/11/M-23-02-M-Memo-on-Migrating-to-Post-Quantum-Cryptography.pdf' },
+  { body: 'EU coordinated PQC roadmap (June 2025)', text: 'Member States and operators start the transition by end of 2026; high-risk use cases complete by 2030; as much as feasible by 2035.', source: 'https://digital-strategy.ec.europa.eu/en/library/coordinated-implementation-roadmap-transition-post-quantum-cryptography' },
 ];
+
+// E4b: one plain status per finding and per endpoint.
+export const STATUS = {
+  vulnerable: 'Quantum-vulnerable', transitional: 'Transitional', deprecated: 'Deprecated (TLS 1.0-1.1)', unsafe: 'Unsafe (SSL)', safe: 'Quantum-safe',
+};
+const TRANSITIONAL_IDS = new Set(['QF-HAPROXY-MISSING-GROUP-POLICY', 'QF-APACHE-MISSING-GROUP-POLICY', 'QF-ENVOY-MISSING-GROUP-POLICY', 'QF-SSH-CLASSICAL-HOSTKEY']);
+export function findingStatus(f) {
+  if (f.id === 'QF-SSL-PROTOCOL') return STATUS.unsafe;
+  if (f.category === 'protocol-baseline') return STATUS.deprecated;
+  if (TRANSITIONAL_IDS.has(f.id) || /MISSING-GROUP-POLICY/.test(f.id)) return STATUS.transitional;
+  return STATUS.vulnerable;
+}
+export function endpointStatus(e) {
+  if (!e.ok) return 'Not reachable';
+  if (/^SSL/i.test(e.evidence.protocol || '')) return STATUS.unsafe;
+  if (/^TLSv1(\.[01])?$/i.test(e.evidence.protocol || '')) return STATUS.deprecated;
+  if (e.evidence.verdict.pqKeyExchange) return e.evidence.verdict.pqAuthentication ? STATUS.safe : STATUS.safe + ' (key exchange); certificate still classical';
+  return STATUS.vulnerable;
+}
 
 // Where a cryptographic inventory and migration plan is evidence.
 export const MAPPINGS = [
@@ -75,7 +97,7 @@ export function roadmap(scan, migration, endpoints) {
 
 // endpoints: [{ target, ok, evidence?, error? }] from verifyTls. scan / migration may be null when only
 // endpoints were checked. organization: the customer's name for the cover.
-export function buildReadinessReport({ organization, scan, migration, endpoints = [], now = new Date() }) {
+export function buildReadinessReport({ organization, scan, migration, endpoints = [], crossCheck = null, coverage = null, now = new Date() }) {
   const score = scoreReadiness(scan, endpoints);
   const s = scan ? scan.summary : null;
   const byCategory = {};
@@ -88,6 +110,9 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
       filesScanned: scan ? scan.filesScanned : 0,
       endpointsChecked: endpoints.length,
       note: 'This report covers only the files uploaded and the endpoints listed. Cryptography elsewhere (other repositories, devices, vendors, hardware security modules, managed cloud services) is not included.',
+      // E4d: what the scanner reads, which languages, and what it does not cover.
+      ...(coverage ? { languages: coverage.languages, configs: coverage.configs, notCovered: coverage.notCovered } : {}),
+      endpoints: endpoints.map((e) => e.target),
     },
     readiness: { score: score.score, stage: score.stage.id, stageLabel: score.stage.label, stageSummary: score.stage.summary },
     summary: {
@@ -98,12 +123,13 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
     },
     roadmap: roadmap(scan, migration, endpoints),
     endpoints: endpoints.map((e) => e.ok
-      ? { target: e.target, protocol: e.evidence.protocol, keyExchange: e.evidence.ephemeralKey && (e.evidence.ephemeralKey.name || e.evidence.ephemeralKey.type) || 'unknown', certificateSignature: e.evidence.peerSignatureAlgorithm, postQuantumKeyExchange: e.evidence.verdict.pqKeyExchange, postQuantumAuthentication: e.evidence.verdict.pqAuthentication, observedAt: e.evidence.generatedAt }
-      : { target: e.target, error: String(e.error || 'unreachable').slice(0, 200) }),
-    findings: (scan ? scan.findings : []).slice(0, 500).map((f) => ({ id: f.id, severity: f.severity, category: f.category, file: slash(f.file), line: f.line, excerpt: f.excerpt, reason: f.reason, remediation: f.remediation, standard: f.standard, automatable: f.automatable })),
+      ? { target: e.target, status: endpointStatus(e), protocol: e.evidence.protocol, keyExchange: e.evidence.ephemeralKey && (e.evidence.ephemeralKey.name || e.evidence.ephemeralKey.type) || 'unknown', certificateSignature: e.evidence.peerSignatureAlgorithm, postQuantumKeyExchange: e.evidence.verdict.pqKeyExchange, postQuantumAuthentication: e.evidence.verdict.pqAuthentication, observedAt: e.evidence.generatedAt }
+      : { target: e.target, status: endpointStatus(e), error: String(e.error || 'unreachable').slice(0, 200) }),
+    findings: (scan ? scan.findings : []).slice(0, 500).map((f) => ({ id: f.id, status: findingStatus(f), ...(f.language ? { language: f.language } : {}), severity: f.severity, category: f.category, file: slash(f.file), line: f.line, excerpt: f.excerpt, reason: f.reason, remediation: f.remediation, standard: f.standard, automatable: f.automatable })),
     cbom: scan ? scanToCbom(scan) : null,
     deadlines: DEADLINES,
     mappings: MAPPINGS,
+    ...(crossCheck ? { crossCheck } : {}),
     method: 'Score = 100 minus: 15 per critical finding (at most 45), 5 per high (at most 35), 2 per medium (at most 10), 10 per endpoint negotiating only classical key exchange (at most 20), 5 per endpoint that could not be reached (at most 10). Stage: Urgent when any critical finding exists; Ready when no critical, high or medium finding remains and every checked endpoint negotiates post-quantum key exchange; In transition when some post-quantum protection exists or supported changes are ready; otherwise Exposed. Findings come from static analysis of the uploaded files; endpoint results are live TLS 1.3 observations at the time shown.',
   };
 }
@@ -123,6 +149,16 @@ export function verifyReport(doc, trustedPublicKeys = null) {
 
 // ---------- HTML ----------
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// E4e: the independent cross-check appendix (semgrep on code, sslyze on hosts), disagreements first.
+function crossCheckHtml(c) {
+  const tool = (t) => '<p><b>' + esc(t.tool) + '</b>: ' + (t.ran ? 'ran' + (t.version ? ' (' + esc(t.version) + ')' : '') + ', ' + esc(t.findings) + ' finding(s)' : '<b>not run</b>: ' + esc(t.reason)) + '</p>';
+  const list = (items) => items.length ? '<table><tr><th>Where</th><th>What</th></tr>' + items.map((d) => '<tr><td><code>' + esc(d.where) + '</code></td><td>' + esc(d.note) + '</td></tr>').join('') + '</table>' : '<p class="muted">None.</p>';
+  return '<h2>Appendix: independent cross-check</h2><p class="muted">' + esc(c.method) + '</p>' + c.tools.map(tool).join('')
+    + '<h3>Found by the cross-check, not by PQC Forge (' + c.onlyCrossCheck.length + ')</h3>' + list(c.onlyCrossCheck)
+    + '<h3>Found by PQC Forge, not by the cross-check (' + c.onlyForge.length + ')</h3>' + list(c.onlyForge)
+    + '<p><b>Agreed:</b> ' + esc(c.agreed) + ' finding(s).</p>';
+}
 
 export function renderReportHtml(doc) {
   const r = doc;
@@ -157,11 +193,12 @@ code{font:12.5px ui-monospace,Consolas,monospace;word-break:break-all}
 <div class="tile"><b>${esc(r.summary.critical)}</b>critical</div><div class="tile"><b>${esc(r.summary.high)}</b>high</div><div class="tile"><b>${esc(r.summary.medium)}</b>medium</div>
 <div class="tile"><b>${esc(r.summary.migrationChangesReady)}</b>changes PQC Forge can generate</div><div class="tile"><b>${esc(r.summary.endpointsPostQuantum)}/${esc(r.scope.endpointsChecked)}</b>endpoints post-quantum</div></div>
 <h2>What to do, in order</h2>${r.roadmap.map((st) => `<div class="step"><div class="when">${esc(st.priority)}${st.automated ? ' · PQC Forge can generate this' : ''}</div><b>${esc(st.title)}</b><div>${esc(st.detail)}</div>${st.where.length ? '<div class="muted" style="font-size:13px;margin-top:4px">Where: ' + st.where.slice(0, 12).map((w) => '<code>' + esc(w) + '</code>').join(', ') + (st.where.length > 12 ? ' and ' + (st.where.length - 12) + ' more' : '') + '</div>' : ''}</div>`).join('')}
-<h2>Live endpoints</h2>${r.endpoints.length ? `<table><tr><th>Endpoint</th><th>Key exchange</th><th>Certificate signature</th><th>Post-quantum</th></tr>${rows(r.endpoints, [(e) => '<code>' + esc(e.target) + '</code>', (e) => e.error ? '<span class="muted">' + esc(e.error) + '</span>' : esc(e.keyExchange) + ' (' + esc(e.protocol) + ')', (e) => esc(e.certificateSignature || '-'), (e) => e.error ? 'not reached' : e.postQuantumKeyExchange ? 'yes (key exchange)' + (e.postQuantumAuthentication ? ' and signature' : '') : '<b>no</b>'])}</table>` : '<p class="muted">No endpoints were listed for this report.</p>'}
-<h2>Findings (${esc(r.summary.findings)})</h2>${r.findings.length ? `<table><tr><th>Severity</th><th>Where</th><th>What</th><th>Fix</th></tr>${rows(r.findings, [(f) => sev(f.severity), (f) => '<code>' + esc(f.file) + ':' + esc(f.line) + '</code><div class="muted"><code>' + esc(f.excerpt) + '</code></div>', (f) => esc(f.reason) + ' <span class="muted">(' + esc(f.standard) + ')</span>', (f) => esc(f.remediation) + (f.automatable ? ' <b>PQC Forge can generate this change.</b>' : '')])}</table>` : '<p>No quantum-vulnerable cryptography was found in the scanned files.</p>'}
-<h2>Deadlines to plan against</h2><table><tr><th>Source</th><th>Position</th></tr>${rows(r.deadlines, [(d) => esc(d.body), (d) => esc(d.text)])}</table><p class="muted" style="font-size:13px">Check the current text of each source; positions change as drafts are finalised.</p>
+<h2>Live endpoints</h2>${r.endpoints.length ? `<table><tr><th>Endpoint</th><th>Status</th><th>Key exchange</th><th>Certificate signature</th><th>Post-quantum</th></tr>${rows(r.endpoints, [(e) => '<code>' + esc(e.target) + '</code>', (e) => '<b>' + esc(e.status || '') + '</b>', (e) => e.error ? '<span class="muted">' + esc(e.error) + '</span>' : esc(e.keyExchange) + ' (' + esc(e.protocol) + ')', (e) => esc(e.certificateSignature || '-'), (e) => e.error ? 'not reached' : e.postQuantumKeyExchange ? 'yes (key exchange)' + (e.postQuantumAuthentication ? ' and signature' : '') : '<b>no</b>'])}</table>` : '<p class="muted">No endpoints were listed for this report.</p>'}
+<h2>Findings (${esc(r.summary.findings)})</h2>${r.findings.length ? `<table><tr><th>Status</th><th>Severity</th><th>Where</th><th>What</th><th>Fix</th></tr>${rows(r.findings, [(f) => '<b>' + esc(f.status || '') + '</b>' + (f.language ? '<div class="muted">' + esc(f.language) + '</div>' : ''), (f) => sev(f.severity), (f) => '<code>' + esc(f.file) + ':' + esc(f.line) + '</code><div class="muted"><code>' + esc(f.excerpt) + '</code></div>', (f) => esc(f.reason) + ' <span class="muted">(' + esc(f.standard) + ')</span>', (f) => esc(f.remediation) + (f.automatable ? ' <b>PQC Forge can generate this change.</b>' : '')])}</table>` : '<p>No quantum-vulnerable cryptography was found in the scanned files.</p>'}
+<h2>Deadlines to plan against</h2><table><tr><th>Source</th><th>Position</th></tr>${rows(r.deadlines, [(d) => esc(d.body) + (d.source ? '<div class="muted" style="font-size:12px"><code>' + esc(d.source) + '</code></div>' : ''), (d) => esc(d.text)])}</table><p class="muted" style="font-size:13px">Check the current text of each source; positions change as drafts are finalised.</p>
 <h2>Where this report is evidence</h2><table><tr><th>Framework</th><th>Requirement</th><th>What it asks</th></tr>${rows(r.mappings, [(m) => esc(m.framework), (m) => esc(m.control), (m) => esc(m.text)])}</table>
-<h2>Scope and method</h2><p>${esc(r.scope.note)}</p><p class="muted">${esc(r.method)}</p><p class="muted">The full cryptographic bill of materials (CycloneDX 1.6 CBOM) is inside the signed JSON version of this report.</p>
+<h2>Scope and method</h2><p>${esc(r.scope.note)}</p>${r.scope.languages ? '<p><b>Languages read:</b> ' + r.scope.languages.map(esc).join(', ') + '.<br><b>Configuration read:</b> ' + r.scope.configs.map(esc).join('; ') + '.</p><p><b>Not covered by this scan:</b></p><ul>' + r.scope.notCovered.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>' : ''}<p class="muted">${esc(r.method)}</p><p class="muted">The full cryptographic bill of materials (CycloneDX 1.6 CBOM) is inside the signed JSON version of this report and in cbom.json.</p>
+${r.crossCheck ? crossCheckHtml(r.crossCheck) : ''}
 <div class="foot">Signed with ${esc(doc.signature ? doc.signature.algorithm : 'ML-DSA-65')} (FIPS 204), key <code>${esc(doc.signature ? doc.signature.keyId : '')}</code>. Anyone can check the JSON version has not been changed: <code>pqc-forge verify-receipt report.json</code> or the Verify Receipt page. PQC Forge does not implement cryptographic primitives and this report is not legal advice.</div>
 </div></body></html>`;
 }

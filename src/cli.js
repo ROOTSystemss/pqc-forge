@@ -23,6 +23,7 @@ import { setManualPlan, entitlement } from './billing/entitlements.js';
 const HELP = `PQC Forge — repository-to-patch migration evidence
 
 Usage:
+  pqc-forge report-package [<repository>] --out directory [--org name] [--endpoint host:443 ...] [--signing-key file] [--no-crosscheck] [--json]
   pqc-forge scan <path> [--json] [--report file] [--sarif file] [--cbom file] [--baseline scan.json] [--ignore file|--no-ignore]
   pqc-forge migrate <path> [--write --accept-runtime-requirement] [--out directory] [--signing-key file] [--json]
   pqc-forge rollback <migration-receipt.json> [--write] [--json]
@@ -132,7 +133,7 @@ export async function run(args) {
     console.log(HELP);
     return;
   }
-  if (!target && !['protocol-lab', 'doctor', 'keygen', 'tenant-create', 'gate-check'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
+  if (!target && !['protocol-lab', 'doctor', 'keygen', 'tenant-create', 'gate-check', 'report-package'].includes(command)) throw new Error(`Missing target.\n\n${HELP}`);
 
   const json = args.includes('--json');
   const signingKeyOption = optionValue(args, '--signing-key', null);
@@ -215,6 +216,24 @@ export async function run(args) {
       if (status.action) console.log(`Action: ${status.action}`);
     }
     process.exitCode = status.ready ? 0 : 7;
+    return;
+  }
+  // E4f: the whole paid report in one folder (signed JSON, HTML, PDF, CBOM, cross-check, manifest).
+  if (command === 'report-package') {
+    const repo = target && !target.startsWith('--') ? target : null;
+    const outDir = optionValue(args, '--out', null);
+    if (!outDir) throw new Error('report-package requires --out directory.');
+    const { buildReportPackage } = await import('./reportPackage.js');
+    const result = await buildReportPackage({
+      repo, endpoints: optionValues(args, '--endpoint'), organization: optionValue(args, '--org', null),
+      outDir: path.resolve(outDir), signingKey: await resolveSigningKey(), crossCheck: !args.includes('--no-crosscheck'),
+    });
+    if (json) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`Report package written to ${result.outDir}: ${result.files.join(', ')}`);
+      console.log(`Readiness ${result.readiness.score}/100 (${result.readiness.stageLabel}). Receipt ${result.receiptDigest}`);
+      if (result.crossCheck) console.log(`Cross-check: ${result.crossCheck.agreed} agreed, ${result.crossCheck.onlyCrossCheck} only in the cross-check, ${result.crossCheck.onlyForge} only in PQC Forge. ${result.crossCheck.tools.join('; ')}`);
+    }
     return;
   }
   if (command === 'scan') {

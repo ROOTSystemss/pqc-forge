@@ -101,6 +101,79 @@ const RULES = [
   }
 ];
 
+// Live QA 2026-11-02 E1: nothing was found in Python, Go, C#, OpenSSL command lines or sshd_config. These
+// rules apply only to their own file types (`files`), so a Go pattern never fires on Python, and each one
+// names its language for the report's scope statement.
+const PY = /\.py$/i, GO = /\.go$/i, CS = /\.cs$/i;
+const SHELLISH = /(?:\.sh|\.bash|\.ps1|\.yml|\.yaml|\.mk|^dockerfile|^makefile|\.dockerfile)$/i;
+const SSH_CONFIG = /^(?:sshd?_config|.*\.sshd?_config)$/i;
+const LANGUAGE_RULES = [
+  { id: 'QF-PY-RSA', language: 'Python', files: PY, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\brsa\.generate_private_key\s*\(|\bfrom\s+cryptography\.hazmat\.primitives\.asymmetric\s+import\s+[^#\n]*\brsa\b|\bRSA\.(?:generate|import_key|importKey)\s*\(|\bPKCS1_(?:OAEP|v1_5)\.new\s*\(/,
+    reason: 'Python RSA key generation or use (cryptography / PyCryptodome) is vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'Inventory where the key signs or encrypts; plan ML-DSA (signatures) or ML-KEM / hybrid key exchange, for example via liboqs-python, behind an interface you can swap.',
+    standard: 'NIST FIPS 203/204', automatable: false },
+  { id: 'QF-PY-ECC', language: 'Python', files: PY, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\bec\.generate_private_key\s*\(|\bec\.(?:SECP256R1|SECP384R1|SECP521R1|SECP256K1)\s*\(|\b(?:Ed25519|Ed448|X25519|X448)PrivateKey\.generate\s*\(|\bECC\.generate\s*\(/,
+    reason: 'Python elliptic-curve keys (ECDSA, ECDH, Ed25519, X25519) are vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'Use a hybrid key exchange (X25519 + ML-KEM-768) during transition and plan ML-DSA or SLH-DSA for signatures.',
+    standard: 'NIST FIPS 203/204/205', automatable: false },
+  { id: 'QF-GO-RSA', language: 'Go', files: GO, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\brsa\.(?:GenerateKey|GenerateMultiPrimeKey|SignPKCS1v15|SignPSS|EncryptOAEP|EncryptPKCS1v15|DecryptOAEP)\s*\(|^\s*(?:import\s+)?"crypto\/rsa"/,
+    reason: 'Go crypto/rsa key generation or use is vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'Plan ML-DSA for signatures; for key exchange use crypto/mlkem (Go 1.24+) or a hybrid X25519MLKEM768 TLS group.',
+    standard: 'NIST FIPS 203/204', automatable: false },
+  { id: 'QF-GO-ECC', language: 'Go', files: GO, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\becdsa\.(?:GenerateKey|Sign|SignASN1)\s*\(|\belliptic\.P(?:224|256|384|521)\s*\(\s*\)|\becdh\.(?:P256|P384|P521|X25519)\s*\(\s*\)|\bed25519\.GenerateKey\s*\(|^\s*(?:import\s+)?"crypto\/(?:ecdsa|elliptic)"/,
+    reason: 'Go elliptic-curve keys (crypto/ecdsa, crypto/elliptic, crypto/ecdh, ed25519) are vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'Use X25519MLKEM768 in crypto/tls (default in Go 1.24+) and crypto/mlkem for key exchange; plan ML-DSA for signatures.',
+    standard: 'NIST FIPS 203/204/205', automatable: false },
+  { id: 'QF-CS-RSA', language: 'C#', files: CS, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\bRSA\.Create\s*\(|\bnew\s+RSA(?:CryptoServiceProvider|Cng|OpenSsl)\s*\(/,
+    reason: '.NET RSA key creation is vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'Plan ML-DSA / ML-KEM (System.Security.Cryptography.MLDsa and MLKem in .NET 10) behind an abstraction; keep RSA only where a dependency requires it.',
+    standard: 'NIST FIPS 203/204', automatable: false },
+  { id: 'QF-CS-ECC', language: 'C#', files: CS, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\bECDsa\.Create\s*\(|\bECDiffieHellman\.Create\s*\(|\bnew\s+ECDsa(?:Cng|OpenSsl)\s*\(|\bECCurve\.NamedCurves\.nistP(?:256|384|521)\b/,
+    reason: '.NET elliptic-curve keys (ECDsa, ECDiffieHellman) are vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'Use hybrid key exchange where the TLS stack supports it and plan ML-DSA / ML-KEM (.NET 10) for application keys.',
+    standard: 'NIST FIPS 203/204', automatable: false },
+  { id: 'QF-OPENSSL-CLI-RSA', language: 'OpenSSL CLI', files: SHELLISH, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\bopenssl\s+(?:genrsa\b|req\b[^#\n]*-newkey\s+rsa\b|genpkey\b[^#\n]*-algorithm\s+RSA\b)/i,
+    reason: 'An OpenSSL command creates an RSA key, which is vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'With OpenSSL 3.5+, generate ML-DSA keys (openssl genpkey -algorithm ML-DSA-65) where peers support them; otherwise record the key as transitional.',
+    standard: 'NIST FIPS 204', automatable: false },
+  { id: 'QF-OPENSSL-CLI-ECC', language: 'OpenSSL CLI', files: SHELLISH, severity: 'high', category: 'quantum-vulnerable-algorithm',
+    pattern: /\bopenssl\s+(?:ecparam\b|genpkey\b[^#\n]*-algorithm\s+(?:EC|ED25519|ED448|X25519|X448)\b|req\b[^#\n]*-newkey\s+(?:ec|ed25519|ed448)\b)/i,
+    reason: 'An OpenSSL command creates an elliptic-curve key, which is vulnerable to a cryptographically relevant quantum computer.',
+    remediation: 'With OpenSSL 3.5+, use ML-DSA (signatures) or ML-KEM / X25519MLKEM768 (key exchange) where peers support them.',
+    standard: 'NIST FIPS 203/204', automatable: false },
+  { id: 'QF-SSH-CLASSICAL-KEX', language: 'OpenSSH config', files: SSH_CONFIG, severity: 'high', category: 'key-establishment',
+    pattern: /^\s*KexAlgorithms\s+\S+/i, ignore: /mlkem768x25519|sntrup761x25519/i,
+    reason: 'The SSH key exchange list has no post-quantum hybrid (mlkem768x25519-sha256 or sntrup761x25519-sha512).',
+    remediation: 'Put mlkem768x25519-sha256 (OpenSSH 9.9+) and sntrup761x25519-sha512 first in KexAlgorithms, keeping a classical fallback.',
+    standard: 'OpenSSH PQ hybrid key exchange', automatable: true },
+  { id: 'QF-SSH-CLASSICAL-HOSTKEY', language: 'OpenSSH config', files: SSH_CONFIG, severity: 'medium', category: 'quantum-vulnerable-algorithm',
+    pattern: /^\s*HostKey\s+\S*ssh_host_(?:rsa|ecdsa|ed25519|dsa)_key\b/i,
+    reason: 'The SSH host key is a classical signature key; a quantum adversary could forge it in future (no PQ host key type is standard in OpenSSH yet).',
+    remediation: 'Track: keep the host key inventory, prefer ed25519 over RSA now, and plan a PQ signature host key when OpenSSH ships one.',
+    standard: 'NIST FIPS 204 (future SSH profile)', automatable: false },
+];
+RULES.push(...LANGUAGE_RULES);
+
+// What this scanner reads, for the report's scope statement (E4d).
+export const SCAN_COVERAGE = {
+  languages: ['JavaScript/TypeScript (Node)', 'Java', 'Python', 'Go', 'C#', 'C/C++ (OpenSSL API names)'],
+  configs: ['nginx', 'HAProxy', 'Apache mod_ssl', 'Envoy', 'OpenSSH (sshd_config, ssh_config)', 'OpenSSL command lines in shell scripts, Dockerfiles, Makefiles and CI YAML'],
+  notCovered: [
+    'Binaries, container images and installed packages (only source and config text is read)',
+    'Cryptography inside third-party libraries the code calls (the call site is found, not the library internals)',
+    'Kotlin, Rust, Ruby, PHP, Swift: only the generic RSA/ECC name rules apply, with no language-specific API rules',
+    'Keys and certificates held in HSMs, cloud KMS or certificate stores',
+    'Live TLS endpoints, unless a host cross-check (testssl.sh / sslyze) was run',
+  ],
+};
+
 const HAPROXY_MISSING_GROUP_POLICY = {
   id: 'QF-HAPROXY-MISSING-GROUP-POLICY',
   severity: 'high',
@@ -281,13 +354,14 @@ async function walk(root, current = root, output = []) {
 function isTextFile(name) {
   const lower = name.toLowerCase();
   return TEXT_EXTENSIONS.has(path.extname(lower)) || [
-    'dockerfile', 'makefile', 'nginx.conf', 'haproxy.cfg', 'caddyfile'
-  ].includes(lower);
+    'dockerfile', 'makefile', 'nginx.conf', 'haproxy.cfg', 'caddyfile', 'sshd_config', 'ssh_config'
+  ].includes(lower) || /\.sshd?_config$|\.ps1$|\.bash$|\.mk$|\.dockerfile$/.test(lower);
 }
 
 function lineFinding(rule, relativeFile, line, lineNumber) {
   return {
     id: rule.id,
+    ...(rule.language ? { language: rule.language } : {}),
     severity: rule.severity,
     category: rule.category,
     file: relativeFile,
@@ -360,8 +434,13 @@ export async function scanRepository(rootPath, { ignoreFile, now = new Date(), o
     }
     const relativeFile = stat.isDirectory() ? path.relative(root, file) : path.basename(file);
     const lines = content.split(/\r?\n/);
+    const baseName = path.basename(relativeFile);
+    const rules = RULES.filter((rule) => !rule.files || rule.files.test(baseName));
+    // A commented-out line in Python, Go, C# or a shell script is not live code (configs keep their own handling).
+    const skipComments = /\.(?:py|go|cs|sh|bash|ps1)$/i.test(baseName);
     for (let index = 0; index < lines.length; index += 1) {
-      for (const rule of RULES) {
+      if (skipComments && /^\s*(?:#|\/\/)/.test(lines[index])) continue;
+      for (const rule of rules) {
         if (rule.pattern.test(lines[index]) && !(rule.ignore?.test(lines[index]))) {
           const finding = lineFinding(rule, relativeFile, lines[index], index + 1);
           const suppression = applicableSuppression(finding, suppressionConfig.suppressions, now);
