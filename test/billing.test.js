@@ -94,8 +94,10 @@ test('Community cannot start paid hosted jobs; Pro can', async () => {
   const denied = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: 'example.com:443' } });
   assert.equal(denied.status, 402);
   assert.match((await denied.json()).error, /Pro or Team/);
+  // Live QA 2026-11-02 E2: the plan allows migrate on Community (not 402); a workspace that does not exist is now 404 at submit.
   const migrateOk = await post(ctx, '/v1/jobs', { type: 'migrate', params: { workspaceId: 'w_missing', write: false } });
-  assert.equal(migrateOk.status, 202);
+  assert.ok([400, 404].includes(migrateOk.status), 'not 402: ' + migrateOk.status);
+  assert.match((await migrateOk.json()).error, /No such workspace|Invalid workspace id/);
   await setManualPlan(ctx.apiHome, ctx.tenantId, { plan: 'pro', quantity: 2, until: '2099-01-01T00:00:00.000Z' });
   const allowed = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: 'example.com:443' } });
   assert.equal(allowed.status, 202);
