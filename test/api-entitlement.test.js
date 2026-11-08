@@ -28,22 +28,25 @@ async function start() {
 test('hosted API returns 402 for paid job types on Community and allows them after Pro', async () => {
   const ctx = await start();
   try {
+    // Live QA 2026-11-02 E2: jobs name a workspace that exists (a missing one is now 404 at submit).
+    const ws = await (await fetch(`${ctx.base}/v1/workspaces`, { method: 'POST', headers: ctx.headers, body: JSON.stringify({ files: [{ path: 'nginx.conf', content: 'ssl_protocols TLSv1.2;\n' }] }) })).json();
+    const w_x = ws.workspaceId;
     const denied = await fetch(`${ctx.base}/v1/jobs`, {
       method: 'POST', headers: ctx.headers,
-      body: JSON.stringify({ type: 'pr-pack', params: { workspaceId: 'w_x' } })
+      body: JSON.stringify({ type: 'pr-pack', params: { workspaceId: w_x } })
     });
     assert.equal(denied.status, 402);
 
     const migrate = await fetch(`${ctx.base}/v1/jobs`, {
       method: 'POST', headers: ctx.headers,
-      body: JSON.stringify({ type: 'migrate', params: { workspaceId: 'w_x', write: true } })
+      body: JSON.stringify({ type: 'migrate', params: { workspaceId: w_x, write: true } })
     });
     assert.equal(migrate.status, 202);
 
     await setManualPlan(ctx.apiHome, ctx.tenantId, { plan: 'pro', quantity: 1, until: '2099-01-01T00:00:00.000Z' });
     const paid = await fetch(`${ctx.base}/v1/jobs`, {
       method: 'POST', headers: ctx.headers,
-      body: JSON.stringify({ type: 'pr-pack', params: { workspaceId: 'w_x' } })
+      body: JSON.stringify({ type: 'pr-pack', params: { workspaceId: w_x } })
     });
     assert.equal(paid.status, 202);
   } finally {

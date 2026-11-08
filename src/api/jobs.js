@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { scanRepository } from '../scanner.js';
+import { scanRepository, SCAN_COVERAGE } from '../scanner.js';
 import { migrateRepository } from '../migrator.js';
 import { rollbackMigration } from '../rollback.js';
 import { createPrPack } from '../pr-pack.js';
@@ -68,6 +68,27 @@ async function requireValidReceipt(receipt, expectedSchema, label) {
 // One handler per wrapped CLI command. Every handler receives already-
 // authenticated, tenant-scoped context and returns the JSON-serializable
 // result to persist as this job's output.
+// Live QA 2026-11-02 E2: a scan result's "root" showed the server's internal path. A "root" field under this
+// server's data directory is rewritten: a tenant workspace becomes "workspace:<id>/<rest>", anything else
+// "[server]/<rest>". A signed object (one with a "signature") is left exactly as signed: rewriting it would
+// break its signature, and rollback reads the root recorded in a migration receipt.
+export function redactServerPaths(value, apiHome, tenantId) {
+  const home = path.resolve(apiHome);
+  const workspaces = path.resolve(tenantWorkspacesDirectory(apiHome, tenantId));
+  const fix = (s) => {
+    if (typeof s !== 'string' || !s.includes(home)) return s;
+    let out = s;
+    if (out.includes(workspaces)) out = out.split(workspaces + path.sep).join('workspace:').split(workspaces).join('workspace:');
+    return out.split(home).join('[server]').replace(/\\/g, '/');
+  };
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (!v || typeof v !== 'object' || v.signature) return v;
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === 'root' ? fix(x) : walk(x)]));
+  };
+  return walk(value);
+}
+
 const HANDLERS = {
   async scan({ apiHome, tenantId, params }) {
     const { root: workspaceRoot } = resolveWorkspacePath(apiHome, tenantId, params.workspaceId, params.relativePath);
@@ -172,7 +193,7 @@ const HANDLERS = {
         endpoints.push({ target, ok: false, error: error.message });
       }
     }
-    const signed = signReport(buildReadinessReport({ organization: params.organization, scan, migration, endpoints }), signingKey);
+    const signed = signReport(buildReadinessReport({ organization: params.organization, scan, migration, endpoints, coverage: SCAN_COVERAGE }), signingKey);
     const { useReportCredit } = await import('../billing/entitlements.js');
     if (!(await useReportCredit(apiHome, tenantId))) throw new Error('No readiness report credit left. Buy one from the Billing tab.');
     await fs.writeFile(path.join(jobDir, 'readiness-report.json'), JSON.stringify(signed, null, 2), 'utf8');
@@ -313,9 +334,9 @@ export function createJobQueue({
         entry.record.progress = progress;
         await persist(entry.tenantId, entry.jobId, entry.record);
       };
-      const result = await handlers[entry.record.type]({
+      const result = redactServerPaths(await handlers[entry.record.type]({
         apiHome, tenantId: entry.tenantId, jobId: entry.jobId, jobDir, params: entry.record.params, signingKey, reportProgress, safety
-      });
+      }), apiHome, entry.tenantId);
       await fs.writeFile(path.join(jobDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
       entry.record.status = 'succeeded';
     } catch (error) {

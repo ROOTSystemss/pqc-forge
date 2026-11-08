@@ -277,10 +277,9 @@ test('a tenant cannot read another tenant\'s workspace or job through path or id
       method: 'POST', headers: bob.headers,
       body: JSON.stringify({ type: 'scan', params: { workspaceId } })
     });
-    const bobSubmitted = await bobScan.json();
-    const bobFinished = await pollJob(ctx.base, bob.headers, bobSubmitted.jobId);
-    assert.equal(bobFinished.status, 'failed');
-    assert.match(bobFinished.error, /ENOENT|no such|not found/i);
+    // Live QA 2026-11-02 E2: refused at submit with 404 (it used to be accepted and fail later).
+    assert.equal(bobScan.status, 404);
+    assert.match((await bobScan.json()).error, /No such workspace/);
 
     const aliceScan = await fetch(`${ctx.base}/v1/jobs`, {
       method: 'POST', headers: alice.headers,
@@ -307,7 +306,9 @@ test('a malformed job id is rejected by an explicit format check, not left to pa
     // path.resolve) would be caught by "traversal-shaped" cases at minimum.
     for (const malformed of ['..', 'j_deadbeefdeadbee', 'j_deadbeefdeadbeefextra', '../../etc/passwd', 'not-a-job-id']) {
       const response = await fetch(`${ctx.base}/v1/jobs/${encodeURIComponent(malformed)}`, { headers: tenant.headers });
-      assert.equal(response.status, 404, `expected 404 for job id ${JSON.stringify(malformed)}`);
+      // E2: a traversal-shaped id is refused before routing with a JSON 400; any other malformed id is 404.
+      const expected = malformed.includes('/') ? 400 : 404; // a bare '..' is normalised away by fetch before it is sent
+      assert.equal(response.status, expected, `expected ${expected} for job id ${JSON.stringify(malformed)}`);
     }
   } finally {
     await ctx.close();
@@ -495,7 +496,8 @@ test('the built dashboard is served from the same origin, with SPA fallback, and
     assert.equal(apiRoute.status, 401);
 
     const traversal = await fetch(`${base}/..%2f..%2fetc%2fpasswd`);
-    assert.equal(traversal.status, 404); // resolveStaticFile refuses the escape outright, no SPA fallback
+    assert.equal(traversal.status, 400); // live QA 2026-11-02 E2: a traversal is refused with a JSON 400, no SPA fallback
+    assert.match(traversal.headers.get('content-type') ?? '', /json/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
