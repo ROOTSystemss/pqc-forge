@@ -7,6 +7,7 @@ import { scanRepository } from './scanner.js';
 import { migrateRepository } from './migrator.js';
 import { compareScans } from './baseline.js';
 import { scanToSarif } from './sarif.js';
+import { gitCommand, gitSpawnError } from './git.js';
 import { createMigrationReceipt, createPrPackReceipt, verifyReceipt } from './breaklab/receipt.js';
 
 const digest = (content) => `sha256:${createHash('sha256').update(content).digest('hex')}`;
@@ -17,12 +18,12 @@ const publicMigration = (migration) => ({
 
 function executeGit(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, { windowsHide: true });
+    const child = spawn(gitCommand(), args, { windowsHide: true });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.once('error', reject);
+    child.once('error', (error) => reject(gitSpawnError(error)));
     child.once('close', (code) => resolve({ code: code ?? 2, stdout, stderr }));
   });
 }

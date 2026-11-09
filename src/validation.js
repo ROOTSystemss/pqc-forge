@@ -7,18 +7,19 @@ import { scanRepository } from './scanner.js';
 import { migrateRepository } from './migrator.js';
 import { createPrPack } from './pr-pack.js';
 import { createValidationReceipt, verifyReceipt } from './breaklab/receipt.js';
+import { gitCommand, gitSpawnError } from './git.js';
 
 const MAX_SOURCE_BYTES = 1024 * 1024;
 const digest = (content) => `sha256:${createHash('sha256').update(content).digest('hex')}`;
 
 function runGit(args, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, { cwd, windowsHide: true });
+    const child = spawn(gitCommand(), args, { cwd, windowsHide: true });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.once('error', reject);
+    child.once('error', (error) => reject(gitSpawnError(error)));
     child.once('close', (code) => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(`git ${args.join(' ')} failed: ${stderr.trim()}`)));
   });
 }
