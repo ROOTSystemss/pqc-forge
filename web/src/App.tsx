@@ -14,6 +14,7 @@ import { JobsTab } from './components/JobsTab';
 import { ReceiptTab } from './components/ReceiptTab';
 import { BillingTab } from './components/BillingTab';
 import { ReportTab } from './components/ReportTab';
+import { AppFooter } from './socialLinks';
 import './billing.css';
 
 const STORAGE_BASE_URL = 'pqcf.baseUrl';
@@ -91,6 +92,7 @@ export default function App() {
         <LatticeBackground />
         <AppHeader health={null} onDisconnect={null} theme={theme} onThemeChange={setTheme} />
         <ConnectPanel initialBaseUrl={readStorage(STORAGE_BASE_URL) || window.location.origin} initialApiKey={readStorage(STORAGE_API_KEY)} onConnect={handleConnect} />
+        <AppFooter />
       </div>
     );
   }
@@ -117,6 +119,7 @@ export default function App() {
         {tab === 'report' && <ReportTab client={client} onBuyCredit={() => selectTab('billing')} />}
         {tab === 'billing' && <BillingTab client={client} />}
       </main>
+      <AppFooter />
     </div>
   );
 }
