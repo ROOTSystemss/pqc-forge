@@ -50,6 +50,7 @@
   ],
   "author": "RootSystems",
   "dependencies": {
-    "@noble/post-quantum": "0.7.1"
+    "@noble/post-quantum": "0.7.1",
+    "pg": "^8.23.1"
   }
 }

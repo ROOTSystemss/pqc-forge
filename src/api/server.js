@@ -12,7 +12,7 @@ import { publicCatalog, SELF_SERVE_PLANS, INTERVALS } from '../billing/plans.js'
 import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent, assertJobAllowed } from '../billing/entitlements.js';
 import { checkoutProvider, providerByName } from '../billing/providers.js';
 import { normalizeCountry, isBlockedCountry, grantsAccess } from '../billing/exportControl.js';
-import { loadTenant } from './tenants.js';
+import { listTenantIds, loadTenant } from './tenants.js';
 
 const MAX_BODY_BYTES = 68 * 1024 * 1024; // above the 64 MiB workspace cap, plus headroom for JSON overhead
 const SIGNUP_NAME_MAX = 80;
@@ -126,13 +126,7 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
   async function ensureReconciled() {
     if (reconciled) return;
     reconciled = true;
-    let tenantIds = [];
-    try {
-      tenantIds = await fs.readdir(path.join(apiHome, 'tenants'));
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
-    await queue.reconcile(tenantIds);
+    await queue.reconcile(await listTenantIds(apiHome));
   }
 
   async function requireTenant(req) {

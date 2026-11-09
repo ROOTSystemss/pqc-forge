@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PLANS, COMMUNITY_JOB_TYPES } from './plans.js';
+import { createDoc, readDoc, writeDoc } from '../api/docStore.js';
 
 // What an account has paid for, and which repositories use it. Stored per tenant,
 // next to tenant.json. Data minimization: repositories are kept only as a SHA-256
@@ -16,16 +17,15 @@ function tenantDir(apiHome, tenantId) {
   return path.join(apiHome, 'tenants', tenantId);
 }
 
-async function readJson(file, fallback) {
-  try { return JSON.parse(await fs.readFile(file, 'utf8')); }
-  catch (error) { if (error.code === 'ENOENT') return fallback; throw error; }
+// Records live in the API's document store (Postgres when DATABASE_URL is set; see src/api/docStore.js).
+// Every file below is under <apiHome>/tenants/<id>/ or <apiHome>/billing-events/, so the apiHome is derived.
+function homeOf(file) {
+  const at = file.search(/[\\/](tenants[\\/]t_[0-9a-f]{16}|billing-events[\\/][^\\/]+)[\\/][^\\/]+$/);
+  if (at < 0) throw new Error('Not an account record path.');
+  return file.slice(0, at);
 }
-
-async function writeJson(file, value) {
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  await fs.rename(tmp, file);
-}
+const readJson = (file, fallback) => readDoc(homeOf(file), file, fallback);
+const writeJson = (file, value) => writeDoc(homeOf(file), file, value);
 
 export function repoFingerprint(repo) {
   const normalized = String(repo ?? '').trim().toLowerCase().replace(/\.git$/, '').replace(/^https?:\/\/[^/]+\//, '');
@@ -165,14 +165,6 @@ export async function useReportCredit(apiHome, tenantId) {
 /** Dedupe webhook deliveries by the provider's event id. */
 export async function claimEvent(apiHome, provider, eventId) {
   if (!/^[A-Za-z0-9_.:-]{1,200}$/.test(eventId ?? '')) throw new Error('Invalid event id.');
-  const dir = path.join(apiHome, 'billing-events', provider);
-  await fs.mkdir(dir, { recursive: true });
   const name = createHash('sha256').update(eventId).digest('hex');
-  try {
-    await fs.writeFile(path.join(dir, name), new Date().toISOString(), { flag: 'wx' });
-    return true;
-  } catch (error) {
-    if (error.code === 'EEXIST') return false;
-    throw error;
-  }
+  return createDoc(apiHome, path.join(apiHome, 'billing-events', provider, name), { claimedAt: new Date().toISOString() });
 }

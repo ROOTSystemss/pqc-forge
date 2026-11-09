@@ -18,6 +18,7 @@ import {
 } from '../breaklab/receipt.js';
 import { tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { resolveWorkspacePath } from './workspace.js';
+import { listDocDirs, readDoc, writeDoc } from './docStore.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
 import { buildReadinessReport, signReport, renderReportHtml } from '../readinessReport.js';
 
@@ -298,28 +299,9 @@ export function createJobQueue({
   }
 
   async function persist(tenantId, jobId, record) {
-    // A concurrent GET can poll job.json at any moment, including mid-write
-    // of a status transition from a different request. Writing straight to
-    // job.json risks that read observing a truncated file. Write to a sibling
-    // temp file and rename over the target instead: rename is atomic on both
-    // POSIX and NTFS, so a reader only ever sees the old or the new content,
-    // never a partial one.
-    const target = path.join(jobDirectory(apiHome, tenantId, jobId), 'job.json');
-    const temp = `${target}.${randomBytes(4).toString('hex')}.tmp`;
-    await fs.writeFile(temp, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
-    // On Windows, renaming onto a destination another handle currently has
-    // open for reading can transiently fail with EPERM/EBUSY even though
-    // nothing is actually wrong — it clears as soon as that read completes.
-    // POSIX doesn't have this failure mode, so this only ever retries there.
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        await fs.rename(temp, target);
-        return;
-      } catch (error) {
-        if (!['EPERM', 'EBUSY'].includes(error.code) || attempt >= 5) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 10 * attempt));
-      }
-    }
+    // A concurrent GET can poll job.json at any moment; writeDoc is atomic (a row upsert, or on disk a temp
+    // file renamed over the target), so a reader only ever sees the old or the new record, never part of one.
+    await writeDoc(apiHome, path.join(jobDirectory(apiHome, tenantId, jobId), 'job.json'), record);
   }
 
   async function execute(entry) {
@@ -337,7 +319,7 @@ export function createJobQueue({
       const result = redactServerPaths(await handlers[entry.record.type]({
         apiHome, tenantId: entry.tenantId, jobId: entry.jobId, jobDir, params: entry.record.params, signingKey, reportProgress, safety
       }), apiHome, entry.tenantId);
-      await fs.writeFile(path.join(jobDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+      await writeDoc(apiHome, path.join(jobDir, 'result.json'), result);
       entry.record.status = 'succeeded';
     } catch (error) {
       entry.record.status = 'failed';
@@ -389,14 +371,9 @@ export function createJobQueue({
 
   async function getJob(tenantId, jobId) {
     if (!JOB_ID_PATTERN.test(jobId ?? '')) return null;
-    try {
-      const record = JSON.parse(await fs.readFile(path.join(jobDirectory(apiHome, tenantId, jobId), 'job.json'), 'utf8'));
-      if (record.tenantId !== tenantId) return null;
-      return record;
-    } catch (error) {
-      if (error.code === 'ENOENT') return null;
-      throw error;
-    }
+    const record = await readDoc(apiHome, path.join(jobDirectory(apiHome, tenantId, jobId), 'job.json'));
+    if (!record || record.tenantId !== tenantId) return null;
+    return record;
   }
 
   /**
@@ -408,14 +385,7 @@ export function createJobQueue({
    * would want a real index instead of directory-scan-on-every-request.
    */
   async function listJobs(tenantId, { limit = 50, status = null, type = null } = {}) {
-    const dir = tenantJobsDirectory(apiHome, tenantId);
-    let jobIds;
-    try {
-      jobIds = await fs.readdir(dir);
-    } catch (error) {
-      if (error.code === 'ENOENT') return { jobs: [], total: 0 };
-      throw error;
-    }
+    const jobIds = await listDocDirs(apiHome, tenantJobsDirectory(apiHome, tenantId), 'job.json');
     const records = (await Promise.all(jobIds.map((jobId) => getJob(tenantId, jobId)))).filter(Boolean);
     records.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
     const filtered = records.filter((record) => (!status || record.status === status) && (!type || record.type === type));
@@ -425,12 +395,7 @@ export function createJobQueue({
 
   async function getResult(tenantId, jobId) {
     if (!JOB_ID_PATTERN.test(jobId ?? '')) return null;
-    try {
-      return JSON.parse(await fs.readFile(path.join(jobDirectory(apiHome, tenantId, jobId), 'result.json'), 'utf8'));
-    } catch (error) {
-      if (error.code === 'ENOENT') return null;
-      throw error;
-    }
+    return readDoc(apiHome, path.join(jobDirectory(apiHome, tenantId, jobId), 'result.json'));
   }
 
   // One of a job's downloadable files (DOWNLOADABLE_JOB_FILES), by exact name only, for its own tenant.
@@ -454,14 +419,7 @@ export function createJobQueue({
    */
   async function reconcile(tenantIds) {
     for (const tenantId of tenantIds) {
-      const dir = tenantJobsDirectory(apiHome, tenantId);
-      let jobIds;
-      try {
-        jobIds = await fs.readdir(dir);
-      } catch (error) {
-        if (error.code === 'ENOENT') continue;
-        throw error;
-      }
+      const jobIds = await listDocDirs(apiHome, tenantJobsDirectory(apiHome, tenantId), 'job.json');
       for (const jobId of jobIds) {
         const record = await getJob(tenantId, jobId);
         if (!record || TERMINAL_STATES.has(record.status)) continue;

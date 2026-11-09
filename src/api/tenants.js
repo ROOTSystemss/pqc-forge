@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { createDoc, listDocDirs, readDoc } from './docStore.js';
 
 export const TENANT_SCHEMA = 'pqc-forge.tenant/v1';
 
@@ -36,29 +37,23 @@ export async function createTenant(apiHome, { name, email } = {}) {
     apiKeyHash: `sha256:${sha256(apiKey)}`
   };
   const directory = tenantDirectory(apiHome, tenantId);
-  try {
-    await fs.access(directory);
-    throw new Error(`Tenant directory already exists: ${directory}`);
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
   await fs.mkdir(path.join(directory, 'workspaces'), { recursive: true });
   await fs.mkdir(path.join(directory, 'jobs'), { recursive: true });
-  await fs.writeFile(tenantRecordPath(apiHome, tenantId), `${JSON.stringify(record, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  try { await fs.chmod(tenantRecordPath(apiHome, tenantId), 0o600); } catch { /* best-effort outside POSIX filesystems */ }
+  // The record goes to the document store (Postgres when DATABASE_URL is set), created only if absent.
+  if (!(await createDoc(apiHome, tenantRecordPath(apiHome, tenantId), record))) throw new Error(`Tenant already exists: ${tenantId}`);
   return { tenantId, apiKey, record };
 }
 
 export async function loadTenant(apiHome, tenantId) {
   if (!/^t_[0-9a-f]{16}$/.test(tenantId ?? '')) return null;
-  try {
-    const record = JSON.parse(await fs.readFile(tenantRecordPath(apiHome, tenantId), 'utf8'));
-    if (record.schema !== TENANT_SCHEMA || record.tenantId !== tenantId) return null;
-    return record;
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  }
+  const record = await readDoc(apiHome, tenantRecordPath(apiHome, tenantId));
+  if (!record || record.schema !== TENANT_SCHEMA || record.tenantId !== tenantId) return null;
+  return record;
+}
+
+/** Every tenant id with an account record. */
+export function listTenantIds(apiHome) {
+  return listDocDirs(apiHome, path.join(apiHome, 'tenants'), 'tenant.json');
 }
 
 /**
