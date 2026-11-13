@@ -4,6 +4,7 @@ import path from 'node:path';
 import { scanRepository, SCAN_COVERAGE } from '../scanner.js';
 import { migrateRepository } from '../migrator.js';
 import { rollbackMigration } from '../rollback.js';
+import { keyHistory } from '../keyHistory.js';
 import { createPrPack } from '../pr-pack.js';
 import { verifyTls } from '../verifier.js';
 import { writeRuntimeEvidence } from '../runtime-probe.js';
@@ -113,7 +114,8 @@ const HANDLERS = {
     // receipt with their own key and name any folder on the host as its root.
     return rollbackMigration(receipt, {
       write: Boolean(params.write),
-      trustedPublicKeys: [signingKey.publicKey],
+      // Every key this server has signed with (keyHistory.js), so a receipt from before a key rotation still rolls back.
+      trustedPublicKeys: keyHistory(signingKey).keys,
       allowedRoot: tenantWorkspacesDirectory(apiHome, tenantId)
     });
   },

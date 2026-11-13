@@ -121,9 +121,13 @@ export function verifyReceipt(receipt, { trustedPublicKeys = null } = {}) {
 
   let keyTrusted = null;
   if (trustedPublicKeys) {
-    const trustedSet = new Set(trustedPublicKeys.map((entry) => (typeof entry === 'string' ? entry : entry?.publicKey)));
-    keyTrusted = signaturePresent && trustedSet.has(signature.publicKey);
-    if (!keyTrusted) errors.push('signer-not-trusted');
+    // An entry is a public key (base64) or a key-history entry { publicKey, status, validUntil }
+    // (keyHistory.js): a retired key only counts for receipts generated before its validUntil.
+    const entry = signaturePresent ? trustedPublicKeys.map((e) => (typeof e === 'string' ? { publicKey: e } : e)).find((e) => e && e.publicKey === signature.publicKey) : null;
+    const retiredTooEarly = !!entry && entry.status === 'retired' && !!entry.validUntil && !(Date.parse(payload.generatedAt) <= Date.parse(entry.validUntil));
+    keyTrusted = !!entry && !retiredTooEarly;
+    if (!entry) errors.push('signer-not-trusted');
+    else if (retiredTooEarly) errors.push('signed-after-key-retired');
   }
 
   const valid = digestValid && signaturePresent && signatureValid && (trustedPublicKeys ? keyTrusted : true);

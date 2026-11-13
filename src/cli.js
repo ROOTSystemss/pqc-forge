@@ -17,6 +17,7 @@ import { validateCorpus } from './validation.js';
 import { createContainerRunner, writeRuntimeEvidence } from './runtime-probe.js';
 import { writeStagingEvidence } from './staging-gate.js';
 import { generateSigningKey, loadSigningKey, publicKeyDocument } from './signing.js';
+import { KEYRING_FORMAT, wellFormedKeyring } from './keyHistory.js';
 import { provisionTenant } from './api/server.js';
 import { setManualPlan, entitlement } from './billing/entitlements.js';
 
@@ -445,11 +446,17 @@ export async function run(args) {
     const trustedKeyPaths = optionValues(args, '--trusted-key');
     if (args.includes('--trusted-key') && trustedKeyPaths.length === 0) throw new Error('--trusted-key requires a public-key file.');
     const trustedPublicKeys = trustedKeyPaths.length
-      ? await Promise.all(trustedKeyPaths.map(async (keyPath) => {
+      ? (await Promise.all(trustedKeyPaths.map(async (keyPath) => {
           const doc = JSON.parse(await fs.readFile(path.resolve(keyPath), 'utf8'));
-          if (doc.schema !== 'pqc-forge.signing-public-key/v1' && doc.schema !== 'pqc-forge.signing-key/v1') throw new Error(`${keyPath} is not a PQC Forge signing key or public-key document.`);
-          return doc.publicKey;
-        }))
+          // A published key history (GET /.well-known/rootsystems-signing-keys.json): every key in it, a retired
+          // key only for receipts generated before its validUntil.
+          if (doc.format === KEYRING_FORMAT) {
+            if (!wellFormedKeyring(doc)) throw new Error(`${keyPath} is not a well-formed PQC Forge key history.`);
+            return doc.keys;
+          }
+          if (doc.schema !== 'pqc-forge.signing-public-key/v1' && doc.schema !== 'pqc-forge.signing-key/v1') throw new Error(`${keyPath} is not a PQC Forge signing key, public-key document or key history.`);
+          return [doc.publicKey];
+        }))).flat()
       : null;
     const verification = verifyReceipt(receipt, { trustedPublicKeys });
     if (json) console.log(JSON.stringify(verification, null, 2));

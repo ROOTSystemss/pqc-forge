@@ -7,6 +7,7 @@ import { createWorkspace, workspaceExists, resolveWorkspacePath } from './worksp
 import { createJobQueue, JOB_TYPES } from './jobs.js';
 import { verifyReceipt } from '../breaklab/receipt.js';
 import { loadSigningKey } from '../signing.js';
+import { keyHistory } from '../keyHistory.js';
 import { VERSION } from '../version.js';
 import { publicCatalog, SELF_SERVE_PLANS, INTERVALS } from '../billing/plans.js';
 import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent, assertJobAllowed } from '../billing/entitlements.js';
@@ -329,6 +330,12 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       handler: async (req, res, params, body, tenant) => {
         try { return await releaseRepository(apiHome, tenant.tenantId, body.repo); } catch (error) { throw new HttpError(400, error.message); }
       }
+    },
+    {
+      // Every key this server has signed receipts with (current and retired), so receipts from before a
+      // key rotation still verify: pass this file to `pqc-forge verify-receipt --trusted-key`.
+      method: 'GET', pattern: /^\/(?:v1\/signing-keys|\.well-known\/rootsystems-signing-keys\.json)$/, public: true,
+      handler: async () => keyHistory(await resolveSigningKey())
     },
     {
       method: 'POST', pattern: /^\/v1\/verify-receipt$/,
