@@ -14,6 +14,7 @@ import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent
 import { checkoutProvider, providerByName } from '../billing/providers.js';
 import { normalizeCountry, isBlockedCountry, grantsAccess } from '../billing/exportControl.js';
 import { listTenantIds, loadTenant } from './tenants.js';
+import { clientAddress, createSignupLimiter, quotaFor, workspaceUsage, uploadBytes } from './abuseLimits.js';
 
 const MAX_BODY_BYTES = 68 * 1024 * 1024; // above the 64 MiB workspace cap, plus headroom for JSON overhead
 const SIGNUP_NAME_MAX = 80;
@@ -111,8 +112,9 @@ function mockSubscriptionEvent(tenantId, item, quantity) {
  * authenticated request to another tenant's data or to an arbitrary host
  * path.
  */
-export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, safety, webDistPath = null, billingEnv = process.env, fetchImpl = globalThis.fetch } = {}) {
+export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, safety, webDistPath = null, billingEnv = process.env, fetchImpl = globalThis.fetch, signupLimits = {} } = {}) {
   if (!apiHome) throw new Error('createApiServer requires apiHome.');
+  const signupLimiter = createSignupLimiter(signupLimits);
   const resolveSigningKey = async () => (await loadSigningKey(signingKeyPath)).key;
   const queue = createJobQueue({
     apiHome, resolveSigningKey,
@@ -144,6 +146,12 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     {
       method: 'POST', pattern: /^\/v1\/signup$/, public: true, status: 201,
       handler: async (req, res, params, body) => {
+        // Abuse limit (abuseLimits.js): per client address an hour, and for the whole server a day.
+        const slot = signupLimiter.take(clientAddress(req));
+        if (!slot.ok) {
+          res.setHeader('Retry-After', String(slot.retryAfterSeconds));
+        throw new HttpError(429, slot.reason === 'server' ? 'Too many new accounts today. Try again tomorrow, or contact RootSystems.' : 'Too many new accounts from this address. Try again in an hour.');
+        }
         const name = typeof body.name === 'string' ? body.name.trim() : '';
         if (name.length < 2 || name.length > SIGNUP_NAME_MAX) {
           throw new HttpError(400, `Provide a name between 2 and ${SIGNUP_NAME_MAX} characters.`);
@@ -170,6 +178,11 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       method: 'POST', pattern: /^\/v1\/workspaces$/,
       handler: async (req, res, params, body, tenant) => {
         if (!Array.isArray(body.files)) throw new HttpError(400, 'Body requires a files array: [{ path, content, encoding? }].');
+        // Storage quota per account (abuseLimits.js), checked before anything is written.
+        const quota = quotaFor((await entitlement(apiHome, tenant.tenantId)).plan);
+        const used = await workspaceUsage(tenantWorkspacesDirectory(apiHome, tenant.tenantId));
+        if (used.workspaces >= quota.workspaces) throw new HttpError(413, 'Workspace limit reached: this account keeps at most ' + quota.workspaces + ' workspaces.');
+        if (used.bytes + uploadBytes(body.files) > quota.bytes) throw new HttpError(413, 'Storage limit reached: this account may keep at most ' + Math.round(quota.bytes / 1048576) + ' MiB of uploaded files.');
         let result;
         try {
           result = await createWorkspace(apiHome, tenant.tenantId, body.files);
