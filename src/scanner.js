@@ -424,12 +424,16 @@ export async function scanRepository(rootPath, { ignoreFile, now = new Date(), o
   const findings = [];
   const suppressedFindings = [];
 
+  // BM-05: a file that cannot be read is listed as not covered and is NOT counted as scanned (before: skipped
+  // silently but still counted in filesScanned, so an unreadable tree looked fully checked).
+  const unreadableFiles = [];
   for (const file of files) {
     let content;
     try {
       const relativeFile = stat.isDirectory() ? path.relative(root, file) : path.basename(file);
       content = overrides.has(relativeFile) ? overrides.get(relativeFile) : await fs.readFile(file, 'utf8');
     } catch {
+      unreadableFiles.push((stat.isDirectory() ? path.relative(root, file) : path.basename(file)).replace(/\\/g, '/'));
       continue;
     }
     const relativeFile = stat.isDirectory() ? path.relative(root, file) : path.basename(file);
@@ -483,7 +487,9 @@ export async function scanRepository(rootPath, { ignoreFile, now = new Date(), o
     schema: 'pqc-forge.scan/v1',
     generatedAt: new Date().toISOString(),
     root,
-    filesScanned: files.length,
+    filesScanned: files.length - unreadableFiles.length,
+    unreadableFiles: unreadableFiles.slice(0, 200),
+    unreadableCount: unreadableFiles.length,
     summary: findings.reduce((result, finding) => {
       result.total += 1;
       result[finding.severity] += 1;

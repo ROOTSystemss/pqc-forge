@@ -37,7 +37,7 @@ export function findingStatus(f) {
   return STATUS.vulnerable;
 }
 export function endpointStatus(e) {
-  if (!e.ok) return 'Not reachable';
+  if (!e.ok) return 'Not verified (not reachable)';
   if (/^SSL/i.test(e.evidence.protocol || '')) return STATUS.unsafe;
   if (/^TLSv1(\.[01])?$/i.test(e.evidence.protocol || '')) return STATUS.deprecated;
   if (e.evidence.verdict.pqKeyExchange) return e.evidence.verdict.pqAuthentication ? STATUS.safe : STATUS.safe + ' (key exchange); certificate still classical';
@@ -58,6 +58,8 @@ const STAGES = [
   { id: 'exposed', label: 'Exposed: classical cryptography only', summary: 'Quantum-vulnerable algorithms are in use and no endpoint negotiates post-quantum key exchange yet.' },
   { id: 'transition', label: 'In transition', summary: 'Some post-quantum protection is in place or ready to apply, but quantum-vulnerable cryptography remains.' },
   { id: 'ready', label: 'Ready for the deadlines', summary: 'No quantum-vulnerable findings remain in what was scanned, and the checked endpoints negotiate post-quantum key exchange.' },
+  // BM-05: what could not be checked is never "ready" and never claimed "classical only".
+  { id: 'unverified', label: 'Not verified', summary: 'Part or all of what was asked could not be checked (files that could not be read, endpoints that did not answer, or nothing to scan), so readiness cannot be confirmed. No weakness was found in what was checked; fix access and run the report again.' },
 ];
 
 // Fixed rules, written into the report itself (method). 100 = nothing found and every endpoint PQ-ready.
@@ -68,11 +70,18 @@ export function scoreReadiness(scan, endpoints) {
   const penalty = Math.min(45, s.critical * 15) + Math.min(35, s.high * 5) + Math.min(10, s.medium * 2) + Math.min(20, classical * 10) + Math.min(10, unreachable * 5);
   const score = Math.max(0, 100 - penalty);
   const pqEndpoints = endpoints.filter((e) => e.ok && e.evidence.verdict.pqKeyExchange).length;
+  // BM-05 three-state: an observed weakness decides the stage; otherwise anything unchecked (unreachable endpoint,
+  // unreadable file, nothing scanned at all) gives "unverified" - never "ready", and never "exposed" without evidence.
+  const unreadableFiles = scan ? (scan.unreadableCount || 0) : 0;
+  const scannedSomething = !!scan && scan.filesScanned > 0;
+  const nothingChecked = !scannedSomething && endpoints.filter((e) => e.ok).length === 0;
+  const clean = s.high === 0 && s.medium === 0 && classical === 0;
   let stage = 'exposed';
   if (s.critical > 0) stage = 'urgent';
-  else if (s.high === 0 && s.medium === 0 && (endpoints.length === 0 ? !!scan : classical === 0 && unreachable === 0)) stage = 'ready';
+  else if (clean && (nothingChecked || unreachable > 0 || unreadableFiles > 0)) stage = 'unverified';
+  else if (clean) stage = 'ready';
   else if (pqEndpoints > 0 || s.automatable > 0) stage = 'transition';
-  return { score, stage: STAGES.find((x) => x.id === stage), classicalEndpoints: classical, pqEndpoints, unreachableEndpoints: unreachable };
+  return { score, stage: STAGES.find((x) => x.id === stage), classicalEndpoints: classical, pqEndpoints, unreachableEndpoints: unreachable, unreadableFiles };
 }
 
 // Fix-first plan: each step says what, where, and whether PQC Forge can generate the change.
@@ -265,6 +274,7 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
     organization: String(organization || 'Your organization').slice(0, 120),
     scope: {
       filesScanned: scan ? scan.filesScanned : 0,
+      ...(scan && scan.unreadableCount ? { unreadableFiles: scan.unreadableFiles, unreadableCount: scan.unreadableCount } : {}),
       endpointsChecked: endpoints.length,
       note: 'This report covers only the files uploaded and the endpoints listed. Cryptography elsewhere (other repositories, devices, vendors, hardware security modules, managed cloud services) is not included.',
       // E4d: what the scanner reads, which languages, and what it does not cover.
@@ -276,7 +286,7 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
       findings: s ? s.total : 0, critical: s ? s.critical : 0, high: s ? s.high : 0, medium: s ? s.medium : 0, low: s ? s.low : 0,
       automatable: s ? s.automatable : 0, suppressed: s ? s.suppressed : 0, byCategory,
       migrationChangesReady: migration ? migration.changeCount : 0,
-      endpointsPostQuantum: score.pqEndpoints, endpointsClassicalOnly: score.classicalEndpoints, endpointsUnreachable: score.unreachableEndpoints,
+      endpointsPostQuantum: score.pqEndpoints, endpointsClassicalOnly: score.classicalEndpoints, endpointsUnreachable: score.unreachableEndpoints, filesNotVerified: score.unreadableFiles,
     },
     roadmap: migrationPlan(roadmap(scan, migration, endpoints), generatedAt, plan).map((st) => ({ ...st, deadline: deadlineFor(st, milestones) })),
     endpoints: endpoints.map((e) => e.ok
@@ -294,7 +304,7 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
     deadlineTracker: { asOf: generatedAt.slice(0, 10), milestones, rule: 'A finding or plan step is measured against the nearest published deprecation, disallow or completion date listed here that has not passed; dates to start the transition are listed but not counted. Weak keys and legacy TLS are due now. Check the current text of each source.' },
     mappings: MAPPINGS,
     ...(crossCheck ? { crossCheck } : {}),
-    method: 'Score = 100 minus: 15 per critical finding (at most 45), 5 per high (at most 35), 2 per medium (at most 10), 10 per endpoint negotiating only classical key exchange (at most 20), 5 per endpoint that could not be reached (at most 10). Stage: Urgent when any critical finding exists; Ready when no critical, high or medium finding remains and every checked endpoint negotiates post-quantum key exchange; In transition when some post-quantum protection exists or supported changes are ready; otherwise Exposed. Findings come from static analysis of the uploaded files; endpoint results are live TLS 1.3 observations at the time shown. ' + RANKING_RULE,
+    method: 'Score = 100 minus: 15 per critical finding (at most 45), 5 per high (at most 35), 2 per medium (at most 10), 10 per endpoint negotiating only classical key exchange (at most 20), 5 per endpoint that could not be reached (at most 10). Stage: Urgent when any critical finding exists; Ready when no critical, high or medium finding remains, every checked endpoint answered and negotiates post-quantum key exchange, and every uploaded file could be read; Not verified when nothing weak was found but something could not be checked (an endpoint that did not answer, a file that could not be read, or nothing to scan) - never counted as ready; In transition when some post-quantum protection exists or supported changes are ready; otherwise Exposed. Findings come from static analysis of the uploaded files; endpoint results are live TLS 1.3 observations at the time shown. ' + RANKING_RULE,
   };
 }
 
@@ -326,7 +336,7 @@ function crossCheckHtml(c) {
 
 export function renderReportHtml(doc) {
   const r = doc;
-  const stageColor = { urgent: '#b42318', exposed: '#c2410c', transition: '#a16207', ready: '#15803d' }[r.readiness.stage];
+  const stageColor = { urgent: '#b42318', exposed: '#c2410c', transition: '#a16207', ready: '#15803d', unverified: '#475467' }[r.readiness.stage];
   const sev = (s) => '<span class="sev sev-' + esc(s) + '">' + esc(s) + '</span>';
   const rows = (list, cols) => list.map((x) => '<tr>' + cols.map((c) => '<td>' + c(x) + '</td>').join('') + '</tr>').join('');
   return `<!doctype html>
@@ -352,7 +362,7 @@ code{font:12.5px ui-monospace,Consolas,monospace;word-break:break-all}
 </style></head><body><div class="wrap">${r.sample ? '<div style="border:3px solid #b42318;background:#fef3f2;color:#b42318;padding:12px 16px;margin:0 0 16px;font-weight:700" id="sample-banner">' + esc(r.sampleNotice || 'SAMPLE REPORT. Made-up data.') + '</div>' : ''}
 <header><div class="brand">PQC Forge · RootSystems</div><h1>Post-quantum readiness report</h1>
 <div class="muted">${esc(r.organization)} · generated ${esc(r.generatedAt.slice(0, 10))} · ${esc(r.scope.filesScanned)} files scanned · ${esc(r.scope.endpointsChecked)} endpoint(s) checked</div></header>
-<div class="stage"><div class="score">${esc(r.readiness.score)}</div><div><div class="lbl">${esc(r.readiness.stageLabel)}</div><div>${esc(r.readiness.stageSummary)}</div></div></div>
+<div class="stage"><div class="score">${r.readiness.stage === 'unverified' ? '&ndash;' : esc(r.readiness.score)}</div><div><div class="lbl">${esc(r.readiness.stageLabel)}</div><div>${esc(r.readiness.stageSummary)}</div></div></div>
 <h2>At a glance</h2><div class="grid">
 <div class="tile"><b>${esc(r.summary.critical)}</b>critical</div><div class="tile"><b>${esc(r.summary.high)}</b>high</div><div class="tile"><b>${esc(r.summary.medium)}</b>medium</div>
 <div class="tile"><b>${esc(r.summary.migrationChangesReady)}</b>changes PQC Forge can generate</div><div class="tile"><b>${esc(r.summary.endpointsPostQuantum)}/${esc(r.scope.endpointsChecked)}</b>endpoints post-quantum</div></div>

@@ -86,7 +86,7 @@ export function ReportTab({ client, onBuyCredit }: { client: PqcForgeClient | nu
         {result && (
           <>
             <div className="summary-row">
-              <span className="badge pass">{result.readiness.score}/100</span>
+              <span className={result.readiness.stage === "unverified" ? "badge" : "badge pass"}>{result.readiness.stage === "unverified" ? "Not verified" : `${result.readiness.score}/100`}</span>
               <strong>{result.readiness.stageLabel}</strong>
             </div>
             <p className="muted small">{result.readiness.stageSummary}</p>
