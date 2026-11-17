@@ -196,7 +196,7 @@ const HANDLERS = {
         endpoints.push({ target, ok: false, error: error.message });
       }
     }
-    const signed = signReport(buildReadinessReport({ organization: params.organization, scan, migration, endpoints, coverage: SCAN_COVERAGE, plan: { owners: params.owners, status: params.stepStatus, targetDates: params.targetDates } }), signingKey);
+    const signed = signReport(buildReadinessReport({ organization: params.organization, scan, migration, endpoints, coverage: SCAN_COVERAGE, plan: { owners: params.owners, status: params.stepStatus, targetDates: params.targetDates }, dataLifetimeYears: params.dataLifetimeYears }), signingKey);
     const { useReportCredit } = await import('../billing/entitlements.js');
     if (!(await useReportCredit(apiHome, tenantId))) throw new Error('No readiness report credit left. Buy one from the Billing tab.');
     await fs.writeFile(path.join(jobDir, 'readiness-report.json'), JSON.stringify(signed, null, 2), 'utf8');
