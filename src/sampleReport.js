@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { scanRepository } from './scanner.js';
 import { migrateRepository } from './migrator.js';
 import { buildReadinessReport, signReport, verifyReport, renderReportHtml, cbomFileText, cbomFileMatches } from './readinessReport.js';
+import { SNAPSHOT_SCHEMA, verifySnapshot } from './inventorySnapshot.js';
 
 const SAMPLE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples', 'readiness-sample');
 export const SAMPLE_NOTICE = 'SAMPLE REPORT. Made-up code and organization; no real company was assessed and this is not evidence about anyone.';
@@ -27,12 +28,15 @@ export async function sampleReadinessReport(signingKey) {
 
 // Public check: only readiness reports, only keys this server published. Says whether it is a SAMPLE.
 export function publicVerifyReport(doc, publishedKeys, { cbomText = null } = {}) {
-  const r = verifyReport(doc, publishedKeys);
+  // AD-071: signed inventory snapshots are checked the same way (published keys only).
+  const isSnapshot = doc && doc.schema === SNAPSHOT_SCHEMA;
+  const r = isSnapshot ? verifySnapshot(doc, publishedKeys) : verifyReport(doc, publishedKeys);
   return {
     valid: r.valid === true,
+    kind: isSnapshot ? 'inventory-snapshot' : 'readiness-report',
     errors: r.errors || [],
     sample: r.valid === true && doc.sample === true,
-    organization: r.valid === true ? doc.organization : null,
+    organization: r.valid === true ? (isSnapshot ? doc.label : doc.organization) : null,
     generatedAt: r.valid === true ? doc.generatedAt : null,
     receiptDigest: r.valid === true ? doc.receiptDigest : null,
     // AD-062: when the CBOM file is sent too, whether it is exactly the one this (valid) report names.

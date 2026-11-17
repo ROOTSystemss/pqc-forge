@@ -15,6 +15,49 @@ interface ReportJobResult {
   files: string[];
 }
 
+interface SnapshotJobResult { summary: { findings: number }; unreadableFiles: number; files: string[] }
+
+// AD-071: a signed point-in-time cryptography inventory of the same files, for auditors. No score, no advice,
+// no report credit; Pro and above (the server refuses Community with the plan message).
+function SnapshotPanel({ client, files }: { client: PqcForgeClient | null; files: WorkspaceFile[] }) {
+  const { job, result, error, running, run } = useJobRunner<SnapshotJobResult>(client);
+  const [localError, setLocalError] = useState<string | null>(null);
+  async function handleSnapshot() {
+    if (!client) return;
+    setLocalError(null);
+    try {
+      if (!files.length) { setLocalError('Add at least one file to snapshot.'); return; }
+      const workspace = await client.createWorkspace(files);
+      await run('inventory-snapshot', { workspaceId: workspace.workspaceId, label: 'Inventory snapshot' });
+    } catch (err) {
+      setLocalError(err instanceof ApiError ? err.message : String(err));
+    }
+  }
+  async function downloadSnapshot() {
+    if (!client || !job) return;
+    try {
+      const blob = await client.getJobFile(job.jobId, 'inventory-snapshot.json');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'inventory-snapshot.json'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (err) {
+      setLocalError(err instanceof ApiError ? err.message : String(err));
+    }
+  }
+  return (
+    <Panel title="Signed inventory snapshot">
+      <p className="muted small">A signed, point-in-time list of the cryptography found in the files above, for an auditor. It is an inventory only: no score and no advice. It uses no report credit (Pro plan and above). Anyone can check it on the Verify Receipt tab or the public verifier.</p>
+      <div className="run-row">
+        <button className="ghost" onClick={handleSnapshot} disabled={!client || running}>{running ? <Spinner /> : null} Take a signed snapshot</button>
+        {result && <button className="primary" onClick={downloadSnapshot}>Download signed snapshot (JSON)</button>}
+      </div>
+      {result && <p className="small">{result.summary.findings} finding(s) recorded{result.unreadableFiles ? `, ${result.unreadableFiles} file(s) could not be read (listed, not checked)` : ''}.</p>}
+      <ErrorNote message={localError ?? error} />
+    </Panel>
+  );
+}
+
 // The paid readiness report: upload code/configuration and list live endpoints; PQC Forge scans,
 // checks and signs, and the report is downloaded as one HTML page plus the signed JSON.
 export function ReportTab({ client, onBuyCredit }: { client: PqcForgeClient | null; onBuyCredit?: () => void }) {
@@ -88,8 +131,10 @@ export function ReportTab({ client, onBuyCredit }: { client: PqcForgeClient | nu
         <ErrorNote message={localError ?? error} />
       </Panel>
 
+      <SnapshotPanel client={client} files={files} />
+
       <Panel title="Result">
-        {!result && <EmptyState icon="◇" message="Generate a report to see your readiness here." hint="Takes under a minute for typical uploads." />}
+        {!result &&<EmptyState icon="◇" message="Generate a report to see your readiness here." hint="Takes under a minute for typical uploads." />}
         {result && (
           <>
             <div className="summary-row">

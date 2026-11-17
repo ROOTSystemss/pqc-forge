@@ -21,6 +21,7 @@ import { tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { resolveWorkspacePath } from './workspace.js';
 import { listDocDirs, readDoc, writeDoc } from './docStore.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
+import { buildInventorySnapshot, signSnapshot } from '../inventorySnapshot.js';
 import { buildReadinessReport, signReport, renderReportHtml, cbomFileText, CBOM_FILE_NAME } from '../readinessReport.js';
 
 const JOB_SCHEMA = 'pqc-forge.job/v1';
@@ -37,7 +38,7 @@ const DEFAULT_DOCKER_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_DOCKER_C
 const DOCKER_JOB_TYPES = new Set(['protocol-lab']);
 const MAX_REPORT_ENDPOINTS = 10;
 // Files a job may hand back for download (GET /v1/jobs/:id/files/:name), by exact name only.
-export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8', 'cbom.json': 'application/vnd.cyclonedx+json; charset=utf-8' };
+export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8', 'cbom.json': 'application/vnd.cyclonedx+json; charset=utf-8', 'inventory-snapshot.json': 'application/json; charset=utf-8' };
 
 // Every jobId this module ever generates (submit(), below) matches this
 // exact format. Enforcing it here — the same way tenants.js and
@@ -206,6 +207,16 @@ const HANDLERS = {
     return { schema: 'pqc-forge.readiness-report-job/v1', readiness: signed.readiness, summary: signed.summary, roadmap: signed.roadmap.map((s) => ({ rank: s.rank, key: s.key, priority: s.priority, title: s.title, risk: s.risk, owner: s.owner, targetDate: s.targetDate, status: s.status })), files: ['readiness-report.html', 'readiness-report.json', ...(signed.cbom ? [CBOM_FILE_NAME] : [])], receiptDigest: signed.receiptDigest };
   },
 
+  // AD-071: signed point-in-time cryptography inventory of one workspace (static analysis only; no score, no
+  // advice). Not a readiness report and uses no report credit; plans decide who may run it (assertJobAllowed).
+  async 'inventory-snapshot'({ apiHome, tenantId, jobDir, params, signingKey }) {
+    if (!params.workspaceId) throw new Error('Choose an uploaded workspace to snapshot.');
+    const { root: workspaceRoot } = resolveWorkspacePath(apiHome, tenantId, params.workspaceId, params.relativePath);
+    const scan = await scanRepository(workspaceRoot);
+    const signed = signSnapshot(buildInventorySnapshot({ label: params.label, scan }), signingKey);
+    await fs.writeFile(path.join(jobDir, 'inventory-snapshot.json'), JSON.stringify(signed, null, 2), 'utf8');
+    return { schema: 'pqc-forge.inventory-snapshot-job/v1', summary: signed.summary, unreadableFiles: signed.scope.unreadableFiles.length, files: ['inventory-snapshot.json'], receiptDigest: signed.receiptDigest };
+  },
   async breaklab({ params, signingKey }) {
     const budget = Number(params.budget ?? 64);
     const seed = Number(params.seed ?? 42);
