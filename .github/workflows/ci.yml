@@ -16,7 +16,7 @@ jobs:
         node: [22, 24]  # Node 20 reached end-of-life 2026-04-30
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,5 +24,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm run release:check -- --skip-public --out release-output/ci-${{ matrix.os }}-node-${{ matrix.node }}
+      - name: Release gate (tests stream to the log; a stuck step fails here, before the job limit, so the log is kept)
+        timeout-minutes: 11
+        run: npm run release:check -- --skip-public --out release-output/ci-${{ matrix.os }}-node-${{ matrix.node }}
 

@@ -91,7 +91,9 @@ test('a new account is on Community: one public repository, no private ones', as
 
 test('Community cannot start paid hosted jobs; Pro can', async () => {
   const ctx = await start();
-  const denied = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: 'example.com:443' } });
+  // CI reliability 2026-11-17: never touch the real network from tests. 127.0.0.1 is refused as a private target before
+  // any DNS lookup or connection, so an allowed job finishes at once instead of resolving and dialling example.com.
+  const denied = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: '127.0.0.1:443' } });
   assert.equal(denied.status, 402);
   assert.match((await denied.json()).error, /Pro or Team/);
   // Live QA 2026-11-02 E2: the plan allows migrate on Community (not 402); a workspace that does not exist is now 404 at submit.
@@ -99,8 +101,11 @@ test('Community cannot start paid hosted jobs; Pro can', async () => {
   assert.ok([400, 404].includes(migrateOk.status), 'not 402: ' + migrateOk.status);
   assert.match((await migrateOk.json()).error, /No such workspace|Invalid workspace id/);
   await setManualPlan(ctx.apiHome, ctx.tenantId, { plan: 'pro', quantity: 2, until: '2099-01-01T00:00:00.000Z' });
-  const allowed = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: 'example.com:443' } });
+  const allowed = await post(ctx, '/v1/jobs', { type: 'verify', params: { target: '127.0.0.1:443' } });
   assert.equal(allowed.status, 202);
+  const { jobId } = await allowed.json();
+  let job; for (let i = 0; i < 200; i++) { job = await (await fetch(ctx.base + '/v1/jobs/' + jobId, { headers: ctx.headers })).json(); if (['succeeded', 'failed'].includes(job.status)) break; await new Promise((r) => setTimeout(r, 50)); }
+  assert.ok(['failed', 'succeeded'].includes(job.status), 'the job finishes at once without the real network: ' + job.status);
   await ctx.close();
 });
 
