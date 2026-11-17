@@ -18,6 +18,11 @@ import { checkoutProvider, providerByName } from '../billing/providers.js';
 import { normalizeCountry, isBlockedCountry, grantsAccess } from '../billing/exportControl.js';
 import { listTenantIds, loadTenant, deleteTenant } from './tenants.js';
 import { clientAddress, createSignupLimiter, quotaFor, workspaceUsage, uploadBytes } from './abuseLimits.js';
+import { safetyOptionsFromEnv } from './hosted-safety.js';
+import { normalizeSettings, readSettings, writeSettings, listRuns, readRun, runMonitorOnce, runDueMonitors, defaultProbe, CADENCE_DAYS, MAX_MONITOR_ENDPOINTS } from '../monitor.js';
+
+const MONITOR_TICK_MS = 30 * 60 * 1000; // scheduler wakes every 30 minutes; each account runs when its cadence is due
+const MONITOR_MANUAL_GAP_MS = 5 * 60 * 1000; // at most one "run now" per account every 5 minutes
 
 const MAX_BODY_BYTES = 68 * 1024 * 1024; // above the 64 MiB workspace cap, plus headroom for JSON overhead
 const SIGNUP_NAME_MAX = 80;
@@ -115,11 +120,15 @@ function mockSubscriptionEvent(tenantId, item, quantity) {
  * authenticated request to another tenant's data or to an arbitrary host
  * path.
  */
-export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, safety, webDistPath = null, billingEnv = process.env, fetchImpl = globalThis.fetch, signupLimits = {} } = {}) {
+export function createApiServer({ apiHome, signingKeyPath = null, globalConcurrency, tenantConcurrency, dockerConcurrency, handlers, safety, webDistPath = null, billingEnv = process.env, fetchImpl = globalThis.fetch, signupLimits = {}, monitorScheduler = false, monitorProbe = null, monitorTickMs = MONITOR_TICK_MS } = {}) {
   if (!apiHome) throw new Error('createApiServer requires apiHome.');
   const signupLimiter = createSignupLimiter(signupLimits);
   const resolveSigningKey = async () => (await loadSigningKey(signingKeyPath)).key;
   const exportTimes = new Map(); // AD-077: per-account export timestamps (rate limit 5/hour)
+  // PF-05: TLS and certificate monitoring. The probe is the same passive handshake as the endpoint inventory.
+  const probe = monitorProbe || defaultProbe(safety ?? safetyOptionsFromEnv());
+  const isPaid = async (tenantId) => (await entitlement(apiHome, tenantId)).plan !== 'community';
+  const manualRuns = new Map();
   const queue = createJobQueue({
     apiHome, resolveSigningKey,
     ...(globalConcurrency !== undefined ? { globalConcurrency } : {}),
@@ -269,6 +278,53 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         const result = await queue.getResult(tenant.tenantId, jobId);
         if (!result) throw new HttpError(404, 'Job succeeded but its result is missing.');
         return result;
+      }
+    },
+    // ---------- PF-05: TLS and certificate monitoring ----------
+    {
+      // Settings and the most recent runs (newest first, summaries only).
+      method: 'GET', pattern: /^\/v1\/monitor$/,
+      handler: async (req, res, params, body, tenant) => {
+        const settings = await readSettings(apiHome, tenant.tenantId);
+        const runs = (await listRuns(apiHome, tenant.tenantId)).slice(0, 20).map(({ id, doc }) => ({ runId: id, generatedAt: doc.generatedAt, trigger: doc.trigger, summary: doc.summary, receiptDigest: doc.receiptDigest }));
+        return { cadence: settings.cadence, endpoints: settings.endpoints, lastRunAt: settings.lastRunAt, cadences: Object.keys(CADENCE_DAYS), maxEndpoints: MAX_MONITOR_ENDPOINTS, alerts: 'none: changes are recorded in each signed run (no email or webhook is sent)', runs };
+      }
+    },
+    {
+      // Body { cadence: "off" | "daily" | "weekly", endpoints: ["host" | "host:port", ...] }. Off by default;
+      // daily/weekly need a paid plan (Community can save endpoints with monitoring off).
+      method: 'POST', pattern: /^\/v1\/monitor$/,
+      handler: async (req, res, params, body, tenant) => {
+        let next;
+        try { next = normalizeSettings(body); } catch (error) { throw new HttpError(400, error.message); }
+        if (next.cadence !== 'off' && !(await isPaid(tenant.tenantId))) throw new HttpError(402, 'Scheduled TLS and certificate monitoring needs a paid plan (Pro, Team or Business). You can save endpoints with monitoring off.');
+        const current = await readSettings(apiHome, tenant.tenantId);
+        await writeSettings(apiHome, tenant.tenantId, { cadence: next.cadence, endpoints: next.endpoints, lastRunAt: current.lastRunAt ?? null, lastRunId: current.lastRunId ?? null });
+        return { cadence: next.cadence, endpoints: next.endpoints, lastRunAt: current.lastRunAt ?? null };
+      }
+    },
+    {
+      // Run monitoring now for the saved endpoints (paid plans; once per 5 minutes per account). Returns the summary
+      // and what changed; the full signed run is at GET /v1/monitor/runs/<runId>.
+      method: 'POST', pattern: /^\/v1\/monitor\/run$/,
+      handler: async (req, res, params, body, tenant) => {
+        if (!(await isPaid(tenant.tenantId))) throw new HttpError(402, 'TLS and certificate monitoring needs a paid plan (Pro, Team or Business).');
+        const last = manualRuns.get(tenant.tenantId) || 0;
+        if (Date.now() - last < MONITOR_MANUAL_GAP_MS) { res.setHeader('Retry-After', String(Math.ceil((MONITOR_MANUAL_GAP_MS - (Date.now() - last)) / 1000))); throw new HttpError(429, 'Monitoring ran for this account in the last 5 minutes. Try again shortly.'); }
+        const settings = await readSettings(apiHome, tenant.tenantId);
+        if (!settings.endpoints.length) throw new HttpError(400, 'Save at least one public endpoint first (POST /v1/monitor).');
+        manualRuns.set(tenant.tenantId, Date.now());
+        const { runId, run } = await runMonitorOnce({ apiHome, tenantId: tenant.tenantId, signingKey: await resolveSigningKey(), probe, trigger: 'manual' });
+        return { runId, generatedAt: run.generatedAt, summary: run.summary, changes: run.endpoints.filter((e) => e.changes.length).map((e) => ({ target: e.target, changes: e.changes })), receiptDigest: run.receiptDigest };
+      }
+    },
+    {
+      // One signed run (check it at POST /v1/public/verify-report).
+      method: 'GET', pattern: /^\/v1\/monitor\/runs\/([^/]+)$/,
+      handler: async (req, res, [runId], body, tenant) => {
+        const run = await readRun(apiHome, tenant.tenantId, runId);
+        if (!run) throw new HttpError(404, `No such monitoring run: ${String(runId).slice(0, 40)}`);
+        return run;
       }
     },
     // ---------- subscription ----------
@@ -485,7 +541,25 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     }
   });
 
-  return { server, queue, apiHome };
+  // PF-05 scheduler: off unless the caller asks for it (the production entry point does). One pass at a time; it
+  // never keeps the process alive and stops when the server closes.
+  let monitorPass = null;
+  const runMonitorPass = async (now = new Date()) => {
+    if (monitorPass) return monitorPass;
+    monitorPass = (async () => {
+      try { return await runDueMonitors({ apiHome, signingKey: await resolveSigningKey(), probe, isPaid, now }); }
+      catch (error) { console.error('[monitor] scheduler pass failed:', error.message); return []; }
+      finally { monitorPass = null; }
+    })();
+    return monitorPass;
+  };
+  if (monitorScheduler) {
+    const timer = setInterval(() => { runMonitorPass(); }, monitorTickMs);
+    timer.unref();
+    server.on('close', () => clearInterval(timer));
+  }
+
+  return { server, queue, apiHome, runMonitorPass };
 }
 
 export async function provisionTenant(apiHome, name) {

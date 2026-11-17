@@ -11,6 +11,7 @@ import { SNAPSHOT_SCHEMA, verifySnapshot } from './inventorySnapshot.js';
 import { ENDPOINT_INVENTORY_SCHEMA, verifyEndpointInventory } from './endpointInventory.js';
 import { CERT_INVENTORY_SCHEMA, verifyCertificateInventory } from './certificateInventory.js';
 import { EXPORT_SCHEMA, verifyAccountExport } from './accountExport.js';
+import { MONITOR_RUN_SCHEMA, verifyMonitorRun } from './monitor.js';
 
 const SAMPLE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples', 'readiness-sample');
 export const SAMPLE_NOTICE = 'SAMPLE REPORT. Made-up code and organization; no real company was assessed and this is not evidence about anyone.';
@@ -36,13 +37,14 @@ export function publicVerifyReport(doc, publishedKeys, { cbomText = null } = {})
   const isExport = doc && doc.schema === EXPORT_SCHEMA; // AD-077 account export bundles
   const isEndpoints = doc && doc.schema === ENDPOINT_INVENTORY_SCHEMA; // AD-065
   const isCerts = doc && doc.schema === CERT_INVENTORY_SCHEMA; // AD-066
-  const r = isSnapshot ? verifySnapshot(doc, publishedKeys) : isExport ? verifyAccountExport(doc, publishedKeys) : isEndpoints ? verifyEndpointInventory(doc, publishedKeys) : isCerts ? verifyCertificateInventory(doc, publishedKeys) : verifyReport(doc, publishedKeys);
+  const isMonitor = doc && doc.schema === MONITOR_RUN_SCHEMA; // PF-05 monitoring runs
+  const r = isSnapshot ? verifySnapshot(doc, publishedKeys) : isExport ? verifyAccountExport(doc, publishedKeys) : isEndpoints ? verifyEndpointInventory(doc, publishedKeys) : isCerts ? verifyCertificateInventory(doc, publishedKeys) : isMonitor ? verifyMonitorRun(doc, publishedKeys) : verifyReport(doc, publishedKeys);
   return {
     valid: r.valid === true,
-    kind: isSnapshot ? 'inventory-snapshot' : isExport ? 'account-export' : isEndpoints ? 'endpoint-inventory' : isCerts ? 'certificate-inventory' : 'readiness-report',
+    kind: isSnapshot ? 'inventory-snapshot' : isExport ? 'account-export' : isEndpoints ? 'endpoint-inventory' : isCerts ? 'certificate-inventory' : isMonitor ? 'monitor-run' : 'readiness-report',
     errors: r.errors || [],
     sample: r.valid === true && doc.sample === true,
-    organization: r.valid === true ? (isSnapshot || isEndpoints || isCerts ? doc.label : doc.organization) : null,
+    organization: r.valid === true ? (isSnapshot || isEndpoints || isCerts || isMonitor ? doc.label : doc.organization) : null,
     generatedAt: r.valid === true ? doc.generatedAt : null,
     receiptDigest: r.valid === true ? doc.receiptDigest : null,
     // AD-062: when the CBOM file is sent too, whether it is exactly the one this (valid) report names.

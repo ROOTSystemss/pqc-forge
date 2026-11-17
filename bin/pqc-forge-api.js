@@ -44,7 +44,9 @@ const webDistPath = process.env.PQC_FORGE_WEB_DIST
   ? path.resolve(process.env.PQC_FORGE_WEB_DIST)
   : await fs.access(path.join(defaultWebDist, 'index.html')).then(() => defaultWebDist).catch(() => null);
 
-const { server } = createApiServer({ apiHome, signingKeyPath, webDistPath });
+// PF-05: the monitoring scheduler runs in the API process (every 30 minutes it runs accounts whose daily/weekly
+// cadence is due). PQC_FORGE_MONITOR_SCHEDULER=0 turns it off for this process.
+const { server } = createApiServer({ apiHome, signingKeyPath, webDistPath, monitorScheduler: process.env.PQC_FORGE_MONITOR_SCHEDULER !== '0' });
 
 server.listen(port, host, () => {
   console.log(`PQC Forge API listening on ${host}:${port}`);
