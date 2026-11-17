@@ -11,10 +11,10 @@ import { keyHistory } from '../keyHistory.js';
 import { sampleReadinessReport, publicVerifyReport } from '../sampleReport.js';
 import { VERSION } from '../version.js';
 import { publicCatalog, SELF_SERVE_PLANS, INTERVALS } from '../billing/plans.js';
-import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent, assertJobAllowed } from '../billing/entitlements.js';
+import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent, assertJobAllowed, readSubscription } from '../billing/entitlements.js';
 import { checkoutProvider, providerByName } from '../billing/providers.js';
 import { normalizeCountry, isBlockedCountry, grantsAccess } from '../billing/exportControl.js';
-import { listTenantIds, loadTenant } from './tenants.js';
+import { listTenantIds, loadTenant, deleteTenant } from './tenants.js';
 import { clientAddress, createSignupLimiter, quotaFor, workspaceUsage, uploadBytes } from './abuseLimits.js';
 
 const MAX_BODY_BYTES = 68 * 1024 * 1024; // above the 64 MiB workspace cap, plus headroom for JSON overhead
@@ -278,7 +278,24 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
       }
     },
     {
-      method: 'GET', pattern: /^\/v1\/subscription$/,
+      // S-14 (knock-out Phase 5): self-service account deletion. Body { "confirm": "DELETE" }. Refused while a job is
+      // queued or running, and while a paid subscription billed through a payment provider is active (deleting the
+      // account cannot cancel billing there). Deletes the account, API key hash, subscription, repositories, job
+      // records/results and uploaded files; the server's signing keys are untouched, so receipts and reports already
+      // downloaded stay verifiable.
+      method: 'POST', pattern: /^\/v1\/account\/delete$/,
+      handler: async (req, res, params, body, tenant) => {
+        if (!body || body.confirm !== 'DELETE') throw new HttpError(400, 'To delete this account and everything stored for it, send { "confirm": "DELETE" }.');
+        const active = await queue.listJobs(tenant.tenantId, { limit: 200 });
+        if (active.jobs.some((j) => j.status === 'queued' || j.status === 'running')) throw new HttpError(409, 'A job is still queued or running. Wait for it to finish, then delete the account.');
+        const sub = await readSubscription(apiHome, tenant.tenantId);
+        const ent = await entitlement(apiHome, tenant.tenantId);
+        if (ent.plan !== 'community' && sub && sub.provider && sub.provider !== 'manual') throw new HttpError(409, 'This account has an active paid subscription. Cancel it from the Billing tab first (deleting the account cannot cancel billing at the payment provider), then delete the account.');
+        const result = await deleteTenant(apiHome, tenant.tenantId);
+        return { deleted: true, ...result, reportCreditsForfeited: ent.reportCredits || 0, note: 'Signed receipts and reports you already downloaded stay verifiable: the server signing keys are not affected.' };
+      }
+    },
+    {      method: 'GET', pattern: /^\/v1\/subscription$/,
       handler: async (req, res, params, body, tenant) => entitlement(apiHome, tenant.tenantId)
     },
     {

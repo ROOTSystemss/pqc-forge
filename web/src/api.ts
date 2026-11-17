@@ -121,6 +121,11 @@ export class PqcForgeClient {
     return this.request<JobListResponse>(`/v1/jobs${suffix}`);
   }
 
+  /** S-14: delete this account and everything stored for it (confirm must be exactly "DELETE"). */
+  deleteAccount() {
+    return this.request<{ deleted: boolean; reportCreditsForfeited: number; note: string }>('/v1/account/delete', { method: 'POST', body: JSON.stringify({ confirm: 'DELETE' }) });
+  }
+
   verifyReceipt(receipt: unknown, trustedPublicKeys: string[] | null = null) {
     return this.request<ReceiptVerification>('/v1/verify-receipt', {
       method: 'POST', body: JSON.stringify({ receipt, trustedPublicKeys })

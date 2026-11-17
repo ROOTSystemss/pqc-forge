@@ -112,3 +112,16 @@ export async function listDocDirs(apiHome, dir, leaf) {
     throw error;
   }
 }
+
+/**
+ * Deletes every record under `dir` (an absolute directory under apiHome) and returns how many were removed.
+ * Used by account deletion (S-14). With DATABASE_URL: one DELETE on the key prefix; otherwise the files go with
+ * the directory itself (the caller removes the directory tree).
+ */
+export async function deleteDocsUnder(apiHome, dir) {
+  if (!usingDatabase()) return 0;
+  const prefix = `${keyFor(apiHome, path.join(dir, 'x')).slice(0, -1)}`;
+  const like = `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const { rowCount } = await (await db()).query(`DELETE FROM ${TABLE} WHERE key LIKE $1`, [like]);
+  return rowCount;
+}

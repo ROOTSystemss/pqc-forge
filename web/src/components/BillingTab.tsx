@@ -4,7 +4,44 @@ import type { PlansResponse, SubscriptionResponse } from '../types';
 import { EmptyState, ErrorNote, Panel, Spinner } from './common';
 import { FieldHint, hintId } from './FieldHint';
 
-export function BillingTab({ client }: { client: PqcForgeClient }) {
+// S-14 (knock-out Phase 5): self-service account deletion, with an explicit typed confirmation.
+function DeleteAccountPanel({ client, onDeleted }: { client: PqcForgeClient; onDeleted?: () => void }) {
+  const [confirmText, setConfirmText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function handleDelete() {
+    setError(null);
+    setBusy(true);
+    try {
+      const result = await client.deleteAccount();
+      setDone(`Account deleted. ${result.reportCreditsForfeited ? `${result.reportCreditsForfeited} unused report credit(s) were forfeited. ` : ''}${result.note}`);
+      setTimeout(() => onDeleted?.(), 4000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Panel title="Delete my account">
+      {done ? <p className="small" id="account-deleted">{done}</p> : (
+        <>
+          <p className="muted small">This permanently deletes this account: its API key, plan, job history and results, and every uploaded file. It cannot be undone. A paid subscription must be cancelled first (above), and running jobs must finish. Signed reports and receipts you already downloaded keep verifying.</p>
+          <label htmlFor="delete-confirm">Type DELETE to confirm</label>
+          <input aria-describedby={hintId('BillingTab.deleteConfirm')} id="delete-confirm" type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" />
+          <FieldHint k="BillingTab.deleteConfirm" />
+          <div className="run-row">
+            <button className="ghost" type="button" disabled={busy || confirmText !== 'DELETE'} onClick={() => void handleDelete()}>{busy ? <Spinner /> : null} Delete my account</button>
+          </div>
+          <ErrorNote message={error} />
+        </>
+      )}
+    </Panel>
+  );
+}
+
+export function BillingTab({ client, onAccountDeleted }: { client: PqcForgeClient; onAccountDeleted?: () => void }) {
   const [plans, setPlans] = useState<PlansResponse | null>(null);
   const [sub, setSub] = useState<SubscriptionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -195,6 +232,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
           </>
         )}
       </Panel>
+      <DeleteAccountPanel client={client} onDeleted={onAccountDeleted} />
     </div>
   );
 }

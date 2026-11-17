@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createDoc, listDocDirs, readDoc } from './docStore.js';
+import { createDoc, deleteDocsUnder, listDocDirs, readDoc } from './docStore.js';
 
 export const TENANT_SCHEMA = 'pqc-forge.tenant/v1';
 
@@ -81,4 +81,20 @@ export function tenantWorkspacesDirectory(apiHome, tenantId) {
 
 export function tenantJobsDirectory(apiHome, tenantId) {
   return path.join(tenantDirectory(apiHome, tenantId), 'jobs');
+}
+
+/**
+ * S-14 (knock-out Phase 5): delete a tenant and everything stored for it: the account record (API key hash),
+ * subscription, repositories, job records and results (document store), and uploaded workspaces and job output
+ * files (disk). Safe to call twice. Published signing keys are untouched, so receipts already handed out still
+ * verify. Returns counts only.
+ */
+export async function deleteTenant(apiHome, tenantId) {
+  if (!/^t_[0-9a-f]{16}$/.test(tenantId ?? '')) throw new Error('Not a tenant id.');
+  const directory = tenantDirectory(apiHome, tenantId);
+  const records = await deleteDocsUnder(apiHome, directory);
+  let removedFiles = false;
+  try { await fs.access(directory); removedFiles = true; } catch { /* nothing on disk */ }
+  await fs.rm(directory, { recursive: true, force: true, maxRetries: 3 });
+  return { tenantId, databaseRecordsDeleted: records, diskDirectoryRemoved: removedFiles };
 }

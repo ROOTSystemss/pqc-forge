@@ -5,6 +5,7 @@
   "ConnectPanel.signupEmail": { "hint": "Optional. Only used to reach you about your account; no newsletter.", "example": "you@company.com" },
   "ConnectPanel.keyBaseUrl": { "hint": "The address of the PQC Forge API your key belongs to.", "example": "https://pqc-forge.onrender.com" },
   "ConnectPanel.apiKey": { "hint": "The tenant API key shown once when you signed up. It stays in this browser tab only.", "example": "pqcf_t_..." },
+  "BillingTab.deleteConfirm": { "hint": "Type DELETE to confirm. This removes the account, its API key, plan, jobs and uploaded files for good. Reports you already downloaded still verify.", "example": "DELETE" },
   "BillingTab.buyerCountry": { "hint": "The country you are buying from, so the right tax is applied at checkout.", "example": "United States" },
   "BillingTab.proQuantity": { "hint": "How many repositories the Pro plan should cover (1 to 500).", "example": "3" },
   "ReportTab.organization": { "hint": "The name printed on the signed report cover.", "example": "Acme Payments Ltd" },
