@@ -196,14 +196,14 @@ const HANDLERS = {
         endpoints.push({ target, ok: false, error: error.message });
       }
     }
-    const signed = signReport(buildReadinessReport({ organization: params.organization, scan, migration, endpoints, coverage: SCAN_COVERAGE }), signingKey);
+    const signed = signReport(buildReadinessReport({ organization: params.organization, scan, migration, endpoints, coverage: SCAN_COVERAGE, plan: { owners: params.owners, status: params.stepStatus, targetDates: params.targetDates } }), signingKey);
     const { useReportCredit } = await import('../billing/entitlements.js');
     if (!(await useReportCredit(apiHome, tenantId))) throw new Error('No readiness report credit left. Buy one from the Billing tab.');
     await fs.writeFile(path.join(jobDir, 'readiness-report.json'), JSON.stringify(signed, null, 2), 'utf8');
     await fs.writeFile(path.join(jobDir, 'readiness-report.html'), renderReportHtml(signed), 'utf8');
     // AD-062: the CBOM as its own file; its SHA-256 is inside the signed report (cbomFile.sha256).
     if (signed.cbom) await fs.writeFile(path.join(jobDir, CBOM_FILE_NAME), cbomFileText(signed.cbom), 'utf8');
-    return { schema: 'pqc-forge.readiness-report-job/v1', readiness: signed.readiness, summary: signed.summary, roadmap: signed.roadmap.map((s) => ({ priority: s.priority, title: s.title })), files: ['readiness-report.html', 'readiness-report.json', ...(signed.cbom ? [CBOM_FILE_NAME] : [])], receiptDigest: signed.receiptDigest };
+    return { schema: 'pqc-forge.readiness-report-job/v1', readiness: signed.readiness, summary: signed.summary, roadmap: signed.roadmap.map((s) => ({ rank: s.rank, key: s.key, priority: s.priority, title: s.title, risk: s.risk, owner: s.owner, targetDate: s.targetDate, status: s.status })), files: ['readiness-report.html', 'readiness-report.json', ...(signed.cbom ? [CBOM_FILE_NAME] : [])], receiptDigest: signed.receiptDigest };
   },
 
   async breaklab({ params, signingKey }) {

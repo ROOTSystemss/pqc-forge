@@ -82,16 +82,16 @@ export function roadmap(scan, migration, endpoints) {
   const by = (pred) => findings.filter(pred);
   const files = (list) => [...new Set(list.map((f) => slash(f.file)))];
   const weak = by((f) => f.id === 'QF-WEAK-RSA-SIZE');
-  if (weak.length) steps.push({ priority: 'Now', title: 'Replace keys that are already too weak', detail: weak.length + ' place(s) use RSA keys of 1024 or 1536 bits. Replace them now; this does not wait for the post-quantum programme.', where: files(weak), automated: false });
+  if (weak.length) steps.push({ key: 'weak-keys', risk: 'critical', priority: 'Now', title: 'Replace keys that are already too weak', detail: weak.length + ' place(s) use RSA keys of 1024 or 1536 bits. Replace them now; this does not wait for the post-quantum programme.', where: files(weak), automated: false });
   const legacy = by((f) => f.category === 'protocol-baseline');
-  if (legacy.length) steps.push({ priority: 'Now', title: 'Remove TLS 1.0 and 1.1', detail: legacy.length + ' configuration line(s) still allow legacy TLS, which can never negotiate post-quantum key exchange.', where: files(legacy), automated: true });
+  if (legacy.length) steps.push({ key: 'legacy-tls', risk: 'high', priority: 'Now', title: 'Remove TLS 1.0 and 1.1', detail: legacy.length + ' configuration line(s) still allow legacy TLS, which can never negotiate post-quantum key exchange.', where: files(legacy), automated: true });
   const kex = by((f) => f.category === 'key-establishment');
-  if (kex.length || (migration && migration.changeCount)) steps.push({ priority: 'Next 3 months', title: 'Turn on hybrid post-quantum key exchange on your TLS servers', detail: (migration ? migration.changeCount : kex.length) + ' change(s) to Nginx, HAProxy, Apache or Envoy configuration add X25519MLKEM768 with classical fallbacks. PQC Forge generates these as a reviewed patch (PR pack); the servers need OpenSSL 3.5 or later.', where: files(kex), automated: true });
+  if (kex.length || (migration && migration.changeCount)) steps.push({ key: 'hybrid-kex', risk: 'high', priority: 'Next 3 months', title: 'Turn on hybrid post-quantum key exchange on your TLS servers', detail: (migration ? migration.changeCount : kex.length) + ' change(s) to Nginx, HAProxy, Apache or Envoy configuration add X25519MLKEM768 with classical fallbacks. PQC Forge generates these as a reviewed patch (PR pack); the servers need OpenSSL 3.5 or later.', where: files(kex), automated: true });
   const classical = endpoints.filter((e) => e.ok && !e.evidence.verdict.pqKeyExchange);
-  if (classical.length) steps.push({ priority: 'Next 3 months', title: 'Make your live endpoints negotiate post-quantum key exchange', detail: classical.length + ' endpoint(s) negotiated only classical key exchange (' + [...new Set(classical.map((e) => e.evidence.ephemeralKey && (e.evidence.ephemeralKey.name || e.evidence.ephemeralKey.type) || 'unknown'))].join(', ') + '). Deploy the configuration change above, then re-check them with Verify TLS.', where: classical.map((e) => e.target), automated: false });
+  if (classical.length) steps.push({ key: 'endpoints', risk: 'high', priority: 'Next 3 months', title: 'Make your live endpoints negotiate post-quantum key exchange', detail: classical.length + ' endpoint(s) negotiated only classical key exchange (' + [...new Set(classical.map((e) => e.evidence.ephemeralKey && (e.evidence.ephemeralKey.name || e.evidence.ephemeralKey.type) || 'unknown'))].join(', ') + '). Deploy the configuration change above, then re-check them with Verify TLS.', where: classical.map((e) => e.target), automated: false });
   const algos = by((f) => f.category === 'quantum-vulnerable-algorithm');
-  if (algos.length) steps.push({ priority: 'Next 12 months', title: 'Plan the move of signatures and key exchange in your code', detail: algos.length + ' place(s) in code or configuration use RSA or elliptic-curve keys (for example JWT signing, key generation, certificate settings). Inventory each use, then move signatures to ML-DSA or SLH-DSA and key establishment to ML-KEM or a hybrid, as your libraries add support.', where: files(algos), automated: false });
-  steps.push({ priority: 'Ongoing', title: 'Keep the inventory current', detail: 'Run the PQC Forge GitHub Action on every change with a baseline, so new quantum-vulnerable cryptography fails the build, and re-run this report at least once a year (PCI DSS 12.3.3 asks for a yearly review).', where: [], automated: false });
+  if (algos.length) steps.push({ key: 'code-migration', risk: algos.some((f) => f.severity === 'critical' || f.severity === 'high') ? 'high' : 'medium', priority: 'Next 12 months', title: 'Plan the move of signatures and key exchange in your code', detail: algos.length + ' place(s) in code or configuration use RSA or elliptic-curve keys (for example JWT signing, key generation, certificate settings). Inventory each use, then move signatures to ML-DSA or SLH-DSA and key establishment to ML-KEM or a hybrid, as your libraries add support.', where: files(algos), automated: false });
+  steps.push({ key: 'inventory', risk: 'low', priority: 'Ongoing', title: 'Keep the inventory current', detail: 'Run the PQC Forge GitHub Action on every change with a baseline, so new quantum-vulnerable cryptography fails the build, and re-run this report at least once a year (PCI DSS 12.3.3 asks for a yearly review).', where: [], automated: false });
   return steps;
 }
 
@@ -135,9 +135,55 @@ export function cbomFileMatches(signedReport, cbomText) {
   return !!(signedReport && signedReport.cbomFile && typeof cbomText === 'string' && sha256Hex(cbomText) === signedReport.cbomFile.sha256);
 }
 
+// ---------- AD-067: the roadmap as a migration plan (rank, risk, owner, target date, status) ----------
+export const PLAN_STEP_KEYS = ['weak-keys', 'legacy-tls', 'hybrid-kex', 'endpoints', 'code-migration', 'inventory'];
+export const PLAN_STATUSES = ['not started', 'in progress', 'done'];
+const DEFAULT_OWNER = { 'weak-keys': 'Security engineering', 'legacy-tls': 'Platform / infrastructure', 'hybrid-kex': 'Platform / infrastructure', endpoints: 'Platform / infrastructure', 'code-migration': 'Application engineering', inventory: 'Security lead' };
+const TARGET_DAYS = { Now: 30, 'Next 3 months': 90, 'Next 12 months': 365, Ongoing: 365 };
+const RISK_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const validDate = (d) => ISO_DATE.test(d) && new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) === d;
+
+// plan: { owners?: { [stepKey]: role }, status?: { [stepKey]: status }, targetDates?: { [stepKey]: 'YYYY-MM-DD' } }.
+// Throws a plain error on bad input (unknown step, long text, unknown status, impossible date).
+export function checkPlanInputs(plan = {}) {
+  const out = { owners: {}, status: {}, targetDates: {} };
+  for (const [field, test, what] of [
+    ['owners', (v) => typeof v === 'string' && v.trim().length > 0 && v.length <= 80, 'an owner role of 1-80 characters'],
+    ['status', (v) => PLAN_STATUSES.includes(v), 'one of ' + PLAN_STATUSES.join(', ')],
+    ['targetDates', (v) => typeof v === 'string' && validDate(v), 'a date written YYYY-MM-DD'],
+  ]) {
+    const given = plan && plan[field];
+    if (given === undefined || given === null) continue;
+    if (typeof given !== 'object' || Array.isArray(given)) throw new Error(`${field} must be an object keyed by plan step (${PLAN_STEP_KEYS.join(', ')}).`);
+    for (const [k, v] of Object.entries(given)) {
+      if (!PLAN_STEP_KEYS.includes(k)) throw new Error(`${field}: unknown plan step "${String(k).slice(0, 40)}" (steps: ${PLAN_STEP_KEYS.join(', ')}).`);
+      if (!test(v)) throw new Error(`${field}.${k} must be ${what}.`);
+      out[field][k] = field === 'owners' ? v.trim() : v;
+    }
+  }
+  return out;
+}
+
+export function migrationPlan(steps, generatedAt, plan = {}) {
+  const inputs = checkPlanInputs(plan);
+  const day = (n) => new Date(new Date(generatedAt).getTime() + n * 86400000).toISOString().slice(0, 10);
+  return steps
+    .map((st, i) => ({ st, i }))
+    .sort((a, b) => (RISK_ORDER[a.st.risk] - RISK_ORDER[b.st.risk]) || (a.i - b.i))
+    .map(({ st }, i) => ({
+      ...st,
+      rank: i + 1,
+      owner: inputs.owners[st.key] || DEFAULT_OWNER[st.key],
+      ownerSource: inputs.owners[st.key] ? 'set by the customer' : 'suggested role',
+      targetDate: inputs.targetDates[st.key] || day(TARGET_DAYS[st.priority] ?? 365),
+      status: inputs.status[st.key] || 'not started',
+    }));
+}
+
 // endpoints: [{ target, ok, evidence?, error? }] from verifyTls. scan / migration may be null when only
 // endpoints were checked. organization: the customer's name for the cover.
-export function buildReadinessReport({ organization, scan, migration, endpoints = [], crossCheck = null, coverage = null, now = new Date() }) {
+export function buildReadinessReport({ organization, scan, migration, endpoints = [], crossCheck = null, coverage = null, now = new Date(), plan = {} }) {
   const score = scoreReadiness(scan, endpoints);
   const s = scan ? scan.summary : null;
   const byCategory = {};
@@ -165,7 +211,7 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
       migrationChangesReady: migration ? migration.changeCount : 0,
       endpointsPostQuantum: score.pqEndpoints, endpointsClassicalOnly: score.classicalEndpoints, endpointsUnreachable: score.unreachableEndpoints,
     },
-    roadmap: roadmap(scan, migration, endpoints),
+    roadmap: migrationPlan(roadmap(scan, migration, endpoints), generatedAt, plan),
     endpoints: endpoints.map((e) => e.ok
       ? { target: e.target, status: endpointStatus(e), protocol: e.evidence.protocol, keyExchange: e.evidence.ephemeralKey && (e.evidence.ephemeralKey.name || e.evidence.ephemeralKey.type) || 'unknown', certificateSignature: e.evidence.peerSignatureAlgorithm, postQuantumKeyExchange: e.evidence.verdict.pqKeyExchange, postQuantumAuthentication: e.evidence.verdict.pqAuthentication, observedAt: e.evidence.generatedAt }
       : { target: e.target, status: endpointStatus(e), error: String(e.error || 'unreachable').slice(0, 200) }),
@@ -237,7 +283,7 @@ code{font:12.5px ui-monospace,Consolas,monospace;word-break:break-all}
 <h2>At a glance</h2><div class="grid">
 <div class="tile"><b>${esc(r.summary.critical)}</b>critical</div><div class="tile"><b>${esc(r.summary.high)}</b>high</div><div class="tile"><b>${esc(r.summary.medium)}</b>medium</div>
 <div class="tile"><b>${esc(r.summary.migrationChangesReady)}</b>changes PQC Forge can generate</div><div class="tile"><b>${esc(r.summary.endpointsPostQuantum)}/${esc(r.scope.endpointsChecked)}</b>endpoints post-quantum</div></div>
-<h2>What to do, in order</h2>${r.roadmap.map((st) => `<div class="step"><div class="when">${esc(st.priority)}${st.automated ? ' · PQC Forge can generate this' : ''}</div><b>${esc(st.title)}</b><div>${esc(st.detail)}</div>${st.where.length ? '<div class="muted" style="font-size:13px;margin-top:4px">Where: ' + st.where.slice(0, 12).map((w) => '<code>' + esc(w) + '</code>').join(', ') + (st.where.length > 12 ? ' and ' + (st.where.length - 12) + ' more' : '') + '</div>' : ''}</div>`).join('')}
+<h2>Migration plan, in order</h2>${r.roadmap.map((st) => `<div class="step" data-step="${esc(st.key || '')}"><div class="when">${st.rank ? '#' + esc(st.rank) + ' · ' : ''}${esc(st.priority)}${st.automated ? ' · PQC Forge can generate this' : ''}</div><b>${esc(st.title)}</b><div>${esc(st.detail)}</div>${st.owner ? '<div class="plan" style="font-size:13px;margin-top:6px">Risk <b>' + esc(st.risk) + '</b> · Owner <b>' + esc(st.owner) + '</b> <span class="muted">(' + esc(st.ownerSource) + ')</span> · Target date <b>' + esc(st.targetDate) + '</b> · Status <b>' + esc(st.status) + '</b></div>' : ''}${st.where.length ? '<div class="muted" style="font-size:13px;margin-top:4px">Where: ' + st.where.slice(0, 12).map((w) => '<code>' + esc(w) + '</code>').join(', ') + (st.where.length > 12 ? ' and ' + (st.where.length - 12) + ' more' : '') + '</div>' : ''}</div>`).join('')}
 <h2>Live endpoints</h2>${r.endpoints.length ? `<table><tr><th>Endpoint</th><th>Status</th><th>Key exchange</th><th>Certificate signature</th><th>Post-quantum</th></tr>${rows(r.endpoints, [(e) => '<code>' + esc(e.target) + '</code>', (e) => '<b>' + esc(e.status || '') + '</b>', (e) => e.error ? '<span class="muted">' + esc(e.error) + '</span>' : esc(e.keyExchange) + ' (' + esc(e.protocol) + ')', (e) => esc(e.certificateSignature || '-'), (e) => e.error ? 'not reached' : e.postQuantumKeyExchange ? 'yes (key exchange)' + (e.postQuantumAuthentication ? ' and signature' : '') : '<b>no</b>'])}</table>` : '<p class="muted">No endpoints were listed for this report.</p>'}
 <h2>Findings (${esc(r.summary.findings)})</h2>${r.findings.length ? `<table><tr><th>Status</th><th>Severity</th><th>Where</th><th>What</th><th>Fix</th></tr>${rows(r.findings, [(f) => '<b>' + esc(f.status || '') + '</b>' + (f.language ? '<div class="muted">' + esc(f.language) + '</div>' : ''), (f) => sev(f.severity), (f) => '<code>' + esc(f.file) + ':' + esc(f.line) + '</code><div class="muted"><code>' + esc(f.excerpt) + '</code></div>', (f) => esc(f.reason) + ' <span class="muted">(' + esc(f.standard) + ')</span>', (f) => esc(f.remediation) + (f.automatable ? ' <b>PQC Forge can generate this change.</b>' : '')])}</table>` : '<p>No quantum-vulnerable cryptography was found in the scanned files.</p>'}
 <h2>Deadlines to plan against</h2><table><tr><th>Source</th><th>Position</th></tr>${rows(r.deadlines, [(d) => esc(d.body) + (d.source ? '<div class="muted" style="font-size:12px"><code>' + esc(d.source) + '</code></div>' : ''), (d) => esc(d.text)])}</table><p class="muted" style="font-size:13px">Check the current text of each source; positions change as drafts are finalised.</p>
