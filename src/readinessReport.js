@@ -185,7 +185,7 @@ code{font:12.5px ui-monospace,Consolas,monospace;word-break:break-all}
 .step{border:1px solid var(--line);border-left:5px solid var(--green);border-radius:8px;padding:12px 14px;margin:10px 0}.step .when{font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em}
 .foot{margin-top:40px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
 @media print{.wrap{padding:0}h2{break-after:avoid}.step,tr{break-inside:avoid}}
-</style></head><body><div class="wrap">
+</style></head><body><div class="wrap">${r.sample ? '<div style="border:3px solid #b42318;background:#fef3f2;color:#b42318;padding:12px 16px;margin:0 0 16px;font-weight:700" id="sample-banner">' + esc(r.sampleNotice || 'SAMPLE REPORT. Made-up data.') + '</div>' : ''}
 <header><div class="brand">PQC Forge · RootSystems</div><h1>Post-quantum readiness report</h1>
 <div class="muted">${esc(r.organization)} · generated ${esc(r.generatedAt.slice(0, 10))} · ${esc(r.scope.filesScanned)} files scanned · ${esc(r.scope.endpointsChecked)} endpoint(s) checked</div></header>
 <div class="stage"><div class="score">${esc(r.readiness.score)}</div><div><div class="lbl">${esc(r.readiness.stageLabel)}</div><div>${esc(r.readiness.stageSummary)}</div></div></div>
