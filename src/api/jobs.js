@@ -22,6 +22,7 @@ import { resolveWorkspacePath } from './workspace.js';
 import { listDocDirs, readDoc, writeDoc } from './docStore.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
 import { buildInventorySnapshot, signSnapshot } from '../inventorySnapshot.js';
+import { scanDependencies } from '../dependencyCrypto.js';
 import { buildEndpointInventory, signEndpointInventory } from '../endpointInventory.js';
 import { buildCertificateInventory, signCertificateInventory, readWorkspaceCertificates } from '../certificateInventory.js';
 import { buildReadinessReport, signReport, renderReportHtml, cbomFileText, CBOM_FILE_NAME } from '../readinessReport.js';
@@ -215,9 +216,10 @@ const HANDLERS = {
     if (!params.workspaceId) throw new Error('Choose an uploaded workspace to snapshot.');
     const { root: workspaceRoot } = resolveWorkspacePath(apiHome, tenantId, params.workspaceId, params.relativePath);
     const scan = await scanRepository(workspaceRoot);
-    const signed = signSnapshot(buildInventorySnapshot({ label: params.label, scan }), signingKey);
+    const dependencies = await scanDependencies(workspaceRoot); // AD-070
+    const signed = signSnapshot(buildInventorySnapshot({ label: params.label, scan, dependencies }), signingKey);
     await fs.writeFile(path.join(jobDir, 'inventory-snapshot.json'), JSON.stringify(signed, null, 2), 'utf8');
-    return { schema: 'pqc-forge.inventory-snapshot-job/v1', summary: signed.summary, unreadableFiles: signed.scope.unreadableFiles.length, files: ['inventory-snapshot.json'], receiptDigest: signed.receiptDigest };
+    return { schema: 'pqc-forge.inventory-snapshot-job/v1', summary: signed.summary, dependencies: signed.dependencies ? signed.dependencies.summary : null, unreadableFiles: signed.scope.unreadableFiles.length, files: ['inventory-snapshot.json'], receiptDigest: signed.receiptDigest };
   },
   // AD-065: passive TLS endpoint inventory of the public endpoints the customer lists (one ordinary TLS 1.3
   // handshake each, private addresses refused as for every hosted job). Signed; no score; no report credit.

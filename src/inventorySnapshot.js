@@ -11,7 +11,7 @@ import { scanToCbom } from './cbom.js';
 export const SNAPSHOT_SCHEMA = 'pqc-forge.inventory-snapshot/v1';
 const slash = (p) => String(p || '').split('\\').join('/');
 
-export function buildInventorySnapshot({ label, scan, now = new Date() }) {
+export function buildInventorySnapshot({ label, scan, dependencies = null, now = new Date() }) {
   if (!scan) throw new Error('An inventory snapshot needs a scanned workspace.');
   const findings = (scan.findings || []).slice(0, 5000).map((f) => ({ id: f.id, category: f.category, severity: f.severity, file: slash(f.file), line: f.line, ...(f.language ? { language: f.language } : {}), ...(f.algorithm ? { algorithm: f.algorithm } : {}) }));
   const count = (key) => findings.reduce((m, f) => ((m[f[key]] = (m[f[key]] || 0) + 1), m), {});
@@ -28,6 +28,8 @@ export function buildInventorySnapshot({ label, scan, now = new Date() }) {
     summary: { findings: findings.length, bySeverity: count('severity'), byCategory: count('category') },
     inventory: findings,
     cbom: scanToCbom(scan),
+    // AD-070: declared cryptography libraries (manifests only), inside the signed snapshot when provided.
+    ...(dependencies ? { dependencies } : {}),
   };
 }
 
