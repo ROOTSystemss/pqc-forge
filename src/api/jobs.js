@@ -23,6 +23,7 @@ import { listDocDirs, readDoc, writeDoc } from './docStore.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
 import { buildInventorySnapshot, signSnapshot } from '../inventorySnapshot.js';
 import { buildEndpointInventory, signEndpointInventory } from '../endpointInventory.js';
+import { buildCertificateInventory, signCertificateInventory, readWorkspaceCertificates } from '../certificateInventory.js';
 import { buildReadinessReport, signReport, renderReportHtml, cbomFileText, CBOM_FILE_NAME } from '../readinessReport.js';
 
 const JOB_SCHEMA = 'pqc-forge.job/v1';
@@ -39,7 +40,7 @@ const DEFAULT_DOCKER_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_DOCKER_C
 const DOCKER_JOB_TYPES = new Set(['protocol-lab']);
 const MAX_REPORT_ENDPOINTS = 10;
 // Files a job may hand back for download (GET /v1/jobs/:id/files/:name), by exact name only.
-export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8', 'cbom.json': 'application/vnd.cyclonedx+json; charset=utf-8', 'inventory-snapshot.json': 'application/json; charset=utf-8', 'endpoint-inventory.json': 'application/json; charset=utf-8' };
+export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8', 'cbom.json': 'application/vnd.cyclonedx+json; charset=utf-8', 'inventory-snapshot.json': 'application/json; charset=utf-8', 'endpoint-inventory.json': 'application/json; charset=utf-8', 'certificate-inventory.json': 'application/json; charset=utf-8' };
 
 // Every jobId this module ever generates (submit(), below) matches this
 // exact format. Enforcing it here — the same way tenants.js and
@@ -236,6 +237,30 @@ const HANDLERS = {
     const signed = signEndpointInventory(buildEndpointInventory({ label: params.label, endpoints }), signingKey);
     await fs.writeFile(path.join(jobDir, 'endpoint-inventory.json'), JSON.stringify(signed, null, 2), 'utf8');
     return { schema: 'pqc-forge.endpoint-inventory-job/v1', summary: signed.summary, files: ['endpoint-inventory.json'], receiptDigest: signed.receiptDigest };
+  },
+  // AD-066: certificate inventory and expiry from listed public endpoints and/or certificate files in a workspace.
+  // Private-key files are never read (listed by name only). Signed; no score; no report credit.
+  async 'certificate-inventory'({ apiHome, tenantId, params, signingKey, safety, jobDir }) {
+    const list = Array.isArray(params.endpoints) ? [...new Set(params.endpoints.map((e) => String(e).trim()).filter(Boolean))] : [];
+    if (list.length > MAX_REPORT_ENDPOINTS) throw new Error(`List at most ${MAX_REPORT_ENDPOINTS} endpoints.`);
+    if (!list.length && !params.workspaceId) throw new Error('List at least one endpoint or choose a workspace with certificate files.');
+    const endpoints = [];
+    for (const target of list) {
+      try {
+        const { address } = await resolvePublicTarget(target, { allowPrivateTargets: safety.allowPrivateTargets });
+        endpoints.push({ target, ok: true, evidence: await verifyTls(target, { connectAddress: address }) });
+      } catch (error) {
+        endpoints.push({ target, ok: false, error: error.message });
+      }
+    }
+    let workspace = null;
+    if (params.workspaceId) {
+      const { root } = resolveWorkspacePath(apiHome, tenantId, params.workspaceId, params.relativePath);
+      workspace = await readWorkspaceCertificates(root);
+    }
+    const signed = signCertificateInventory(buildCertificateInventory({ label: params.label, endpoints, workspace }), signingKey);
+    await fs.writeFile(path.join(jobDir, 'certificate-inventory.json'), JSON.stringify(signed, null, 2), 'utf8');
+    return { schema: 'pqc-forge.certificate-inventory-job/v1', summary: signed.summary, privateKeyFilesFound: signed.scope.privateKeyFilesFound.length, files: ['certificate-inventory.json'], receiptDigest: signed.receiptDigest };
   },
   async breaklab({ params, signingKey }) {
     const budget = Number(params.budget ?? 64);

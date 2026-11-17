@@ -8,6 +8,19 @@ export function parseTarget(target) {
   };
 }
 
+export function certificateFacts(c) {
+  if (!c || !c.valid_to) return null;
+  const key = c.asn1Curve || c.nistCurve ? `EC ${c.nistCurve || c.asn1Curve}` : c.bits ? `RSA ${c.bits}` : (c.pubkey ? 'unknown' : null);
+  return {
+    subject: (c.subject && c.subject.CN) || null,
+    issuer: (c.issuer && (c.issuer.CN || c.issuer.O)) || null,
+    validFrom: c.valid_from ? new Date(c.valid_from).toISOString() : null,
+    validTo: new Date(c.valid_to).toISOString(),
+    fingerprint256: c.fingerprint256 || null,
+    publicKey: key,
+  };
+}
+
 // `connectAddress` (optional) is the exact IP to connect to, already checked by the caller; the
 // hostname is still used for SNI and certificate checks. The hosted API uses it so a DNS answer
 // cannot change between the safety check and the connection.
@@ -43,6 +56,9 @@ export async function verifyTls(target, { insecure = false, timeoutMs = 10000, c
         cipher: socket.getCipher(),
         ephemeralKey: ephemeral,
         peerSignatureAlgorithm: signatureAlgorithm,
+        // AD-066: the server certificate's public facts (who, by whom, valid from/to, key), for the certificate
+        // inventory and expiry. No private material is ever available here.
+        certificate: certificateFacts(certificate),
         runtime: { node: process.version, openssl: process.versions.openssl },
         verdict: {
           pqKeyExchange,
