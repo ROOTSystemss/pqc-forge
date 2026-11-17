@@ -114,6 +114,19 @@ export async function listDocDirs(apiHome, dir, leaf) {
 }
 
 /**
+ * AD-077 (knock-out 2026-11-17): every record under `dir` as [{ key, value }], key relative to `dir` with '/'.
+ * With DATABASE_URL: one SELECT on the key prefix. Without: [] (the records are plain files on disk under `dir`,
+ * which the caller reads with the rest of the directory tree).
+ */
+export async function listDocsUnder(apiHome, dir) {
+  if (!usingDatabase()) return [];
+  const prefix = `${keyFor(apiHome, path.join(dir, 'x')).slice(0, -1)}`;
+  const like = `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const { rows } = await (await db()).query(`SELECT key, value FROM ${TABLE} WHERE key LIKE $1 ORDER BY key`, [like]);
+  return rows.map((r) => ({ key: r.key.slice(prefix.length), value: r.value }));
+}
+
+/**
  * Deletes every record under `dir` (an absolute directory under apiHome) and returns how many were removed.
  * Used by account deletion (S-14). With DATABASE_URL: one DELETE on the key prefix; otherwise the files go with
  * the directory itself (the caller removes the directory tree).

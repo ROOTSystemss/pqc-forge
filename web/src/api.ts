@@ -121,6 +121,17 @@ export class PqcForgeClient {
     return this.request<JobListResponse>(`/v1/jobs${suffix}`);
   }
 
+  /** AD-077: download everything this account holds as one signed JSON bundle. */
+  async exportAccount(): Promise<Blob> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/v1/account/export`, { headers: this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {} });
+    } catch {
+      throw new ApiError(0, `Could not reach ${this.baseUrl}.`);
+    }
+    if (!response.ok) throw new ApiError(response.status, response.status === 429 ? 'You exported this account 5 times in the last hour. Try again later.' : `Export failed (${response.status}).`);
+    return response.blob();
+  }
   /** S-14: delete this account and everything stored for it (confirm must be exactly "DELETE"). */
   deleteAccount() {
     return this.request<{ deleted: boolean; reportCreditsForfeited: number; note: string }>('/v1/account/delete', { method: 'POST', body: JSON.stringify({ confirm: 'DELETE' }) });

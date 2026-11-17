@@ -8,6 +8,7 @@ import { scanRepository } from './scanner.js';
 import { migrateRepository } from './migrator.js';
 import { buildReadinessReport, signReport, verifyReport, renderReportHtml, cbomFileText, cbomFileMatches } from './readinessReport.js';
 import { SNAPSHOT_SCHEMA, verifySnapshot } from './inventorySnapshot.js';
+import { EXPORT_SCHEMA, verifyAccountExport } from './accountExport.js';
 
 const SAMPLE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples', 'readiness-sample');
 export const SAMPLE_NOTICE = 'SAMPLE REPORT. Made-up code and organization; no real company was assessed and this is not evidence about anyone.';
@@ -30,10 +31,11 @@ export async function sampleReadinessReport(signingKey) {
 export function publicVerifyReport(doc, publishedKeys, { cbomText = null } = {}) {
   // AD-071: signed inventory snapshots are checked the same way (published keys only).
   const isSnapshot = doc && doc.schema === SNAPSHOT_SCHEMA;
-  const r = isSnapshot ? verifySnapshot(doc, publishedKeys) : verifyReport(doc, publishedKeys);
+  const isExport = doc && doc.schema === EXPORT_SCHEMA; // AD-077 account export bundles
+  const r = isSnapshot ? verifySnapshot(doc, publishedKeys) : isExport ? verifyAccountExport(doc, publishedKeys) : verifyReport(doc, publishedKeys);
   return {
     valid: r.valid === true,
-    kind: isSnapshot ? 'inventory-snapshot' : 'readiness-report',
+    kind: isSnapshot ? 'inventory-snapshot' : isExport ? 'account-export' : 'readiness-report',
     errors: r.errors || [],
     sample: r.valid === true && doc.sample === true,
     organization: r.valid === true ? (isSnapshot ? doc.label : doc.organization) : null,

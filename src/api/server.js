@@ -9,6 +9,7 @@ import { verifyReceipt } from '../breaklab/receipt.js';
 import { loadSigningKey } from '../signing.js';
 import { keyHistory } from '../keyHistory.js';
 import { sampleReadinessReport, publicVerifyReport } from '../sampleReport.js';
+import { buildAccountExport } from '../accountExport.js';
 import { VERSION } from '../version.js';
 import { publicCatalog, SELF_SERVE_PLANS, INTERVALS } from '../billing/plans.js';
 import { entitlement, checkRepository, releaseRepository, applySubscriptionEvent, claimEvent, assertJobAllowed, readSubscription } from '../billing/entitlements.js';
@@ -117,6 +118,7 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
   if (!apiHome) throw new Error('createApiServer requires apiHome.');
   const signupLimiter = createSignupLimiter(signupLimits);
   const resolveSigningKey = async () => (await loadSigningKey(signingKeyPath)).key;
+  const exportTimes = new Map(); // AD-077: per-account export timestamps (rate limit 5/hour)
   const queue = createJobQueue({
     apiHome, resolveSigningKey,
     ...(globalConcurrency !== undefined ? { globalConcurrency } : {}),
@@ -293,6 +295,23 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         if (ent.plan !== 'community' && sub && sub.provider && sub.provider !== 'manual') throw new HttpError(409, 'This account has an active paid subscription. Cancel it from the Billing tab first (deleting the account cannot cancel billing at the payment provider), then delete the account.');
         const result = await deleteTenant(apiHome, tenant.tenantId);
         return { deleted: true, ...result, reportCreditsForfeited: ent.reportCredits || 0, note: 'Signed receipts and reports you already downloaded stay verifiable: the server signing keys are not affected.' };
+      }
+    },
+    {
+      // AD-077 (knock-out 2026-11-17): self-serve data export. One signed JSON bundle (accountExport.js) with the
+      // account record (no API key hash), every stored record, and the account's files (contents up to 25 MiB, then
+      // listed with SHA-256). 5 per hour per account. Check the file at POST /v1/public/verify-report.
+      method: 'GET', pattern: /^\/v1\/account\/export$/,
+      handler: async (req, res, params, body, tenant) => {
+        const nowMs = Date.now();
+        const recent = (exportTimes.get(tenant.tenantId) || []).filter((t) => nowMs - t < 3600 * 1000);
+        if (recent.length >= 5) { res.setHeader('Retry-After', '3600'); throw new HttpError(429, 'You exported this account 5 times in the last hour. Try again later.'); }
+        const bundle = await buildAccountExport({ apiHome, tenant, signingKey: await resolveSigningKey() });
+        recent.push(nowMs);
+        exportTimes.set(tenant.tenantId, recent);
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="pqc-forge-export-${bundle.generatedAt.slice(0, 10)}.json"`, 'cache-control': 'no-store' });
+        res.end(JSON.stringify(bundle, null, 2));
+        return null;
       }
     },
     {      method: 'GET', pattern: /^\/v1\/subscription$/,

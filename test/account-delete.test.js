@@ -47,7 +47,8 @@ async function scenario() {
     assert.equal((await del(ah, { confirm: 'delete' })).status, 400, 'exact confirmation');
 
     const held = await (await fetch(`${s.base}/v1/jobs`, { method: 'POST', headers: ah, body: JSON.stringify({ type: 'scan', params: { workspaceId: ws.workspaceId, hold: true } }) })).json();
-    await new Promise((r) => setTimeout(r, 100));
+    // Wait until the held job is really queued or running (a fixed sleep raced under full-suite load).
+    for (let i = 0; i < 400; i++) { const st = (await (await fetch(`${s.base}/v1/jobs/${held.jobId}`, { headers: ah })).json()).status; if (st === 'running') break; await new Promise((r) => setTimeout(r, 25)); }
     assert.equal((await del(ah, { confirm: 'DELETE' })).status, 409, 'refused while a job is running');
     release();
     await waitDone(ah, held.jobId);

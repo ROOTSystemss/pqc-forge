@@ -4,6 +4,28 @@ import type { PlansResponse, SubscriptionResponse } from '../types';
 import { EmptyState, ErrorNote, Panel, Spinner } from './common';
 import { FieldHint, hintId } from './FieldHint';
 
+// AD-077 (knock-out 2026-11-17): download everything this account holds as one signed JSON file.
+function ExportAccountPanel({ client }: { client: PqcForgeClient }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function handleExport() {
+    setBusy(true); setError(null);
+    try {
+      const blob = await client.exportAccount();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'pqc-forge-export.json'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) { setError(e instanceof ApiError ? e.message : 'Export failed.'); }
+    setBusy(false);
+  }
+  return (
+    <Panel title="Download my data">
+      <p className="muted small">One JSON file with everything this account stores: account details, plan, job records and results, and your uploaded files and job outputs (large files are listed with their SHA-256). Your API key hash is left out on purpose. The file is signed: check it with the public verify-report endpoint (it reads account-export).</p>
+      <button type="button" className="button" id="export-account" disabled={busy} onClick={handleExport}>{busy ? 'Preparing...' : 'Download my data (JSON)'}</button>
+      {error && <ErrorNote message={error} />}
+    </Panel>
+  );
+}
 // S-14 (knock-out Phase 5): self-service account deletion, with an explicit typed confirmation.
 function DeleteAccountPanel({ client, onDeleted }: { client: PqcForgeClient; onDeleted?: () => void }) {
   const [confirmText, setConfirmText] = useState('');
@@ -232,6 +254,7 @@ export function BillingTab({ client, onAccountDeleted }: { client: PqcForgeClien
           </>
         )}
       </Panel>
+      <ExportAccountPanel client={client} />
       <DeleteAccountPanel client={client} onDeleted={onAccountDeleted} />
     </div>
   );
