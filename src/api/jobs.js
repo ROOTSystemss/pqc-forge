@@ -22,6 +22,7 @@ import { resolveWorkspacePath } from './workspace.js';
 import { listDocDirs, readDoc, writeDoc } from './docStore.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
 import { buildInventorySnapshot, signSnapshot } from '../inventorySnapshot.js';
+import { buildEndpointInventory, signEndpointInventory } from '../endpointInventory.js';
 import { buildReadinessReport, signReport, renderReportHtml, cbomFileText, CBOM_FILE_NAME } from '../readinessReport.js';
 
 const JOB_SCHEMA = 'pqc-forge.job/v1';
@@ -38,7 +39,7 @@ const DEFAULT_DOCKER_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_DOCKER_C
 const DOCKER_JOB_TYPES = new Set(['protocol-lab']);
 const MAX_REPORT_ENDPOINTS = 10;
 // Files a job may hand back for download (GET /v1/jobs/:id/files/:name), by exact name only.
-export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8', 'cbom.json': 'application/vnd.cyclonedx+json; charset=utf-8', 'inventory-snapshot.json': 'application/json; charset=utf-8' };
+export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8', 'cbom.json': 'application/vnd.cyclonedx+json; charset=utf-8', 'inventory-snapshot.json': 'application/json; charset=utf-8', 'endpoint-inventory.json': 'application/json; charset=utf-8' };
 
 // Every jobId this module ever generates (submit(), below) matches this
 // exact format. Enforcing it here — the same way tenants.js and
@@ -216,6 +217,25 @@ const HANDLERS = {
     const signed = signSnapshot(buildInventorySnapshot({ label: params.label, scan }), signingKey);
     await fs.writeFile(path.join(jobDir, 'inventory-snapshot.json'), JSON.stringify(signed, null, 2), 'utf8');
     return { schema: 'pqc-forge.inventory-snapshot-job/v1', summary: signed.summary, unreadableFiles: signed.scope.unreadableFiles.length, files: ['inventory-snapshot.json'], receiptDigest: signed.receiptDigest };
+  },
+  // AD-065: passive TLS endpoint inventory of the public endpoints the customer lists (one ordinary TLS 1.3
+  // handshake each, private addresses refused as for every hosted job). Signed; no score; no report credit.
+  async 'endpoint-inventory'({ params, signingKey, safety, jobDir }) {
+    const list = Array.isArray(params.endpoints) ? [...new Set(params.endpoints.map((e) => String(e).trim()).filter(Boolean))] : [];
+    if (!list.length) throw new Error('List at least one public endpoint (host or host:port).');
+    if (list.length > MAX_REPORT_ENDPOINTS) throw new Error(`List at most ${MAX_REPORT_ENDPOINTS} endpoints.`);
+    const endpoints = [];
+    for (const target of list) {
+      try {
+        const { address } = await resolvePublicTarget(target, { allowPrivateTargets: safety.allowPrivateTargets });
+        endpoints.push({ target, ok: true, evidence: await verifyTls(target, { connectAddress: address }) });
+      } catch (error) {
+        endpoints.push({ target, ok: false, error: error.message });
+      }
+    }
+    const signed = signEndpointInventory(buildEndpointInventory({ label: params.label, endpoints }), signingKey);
+    await fs.writeFile(path.join(jobDir, 'endpoint-inventory.json'), JSON.stringify(signed, null, 2), 'utf8');
+    return { schema: 'pqc-forge.endpoint-inventory-job/v1', summary: signed.summary, files: ['endpoint-inventory.json'], receiptDigest: signed.receiptDigest };
   },
   async breaklab({ params, signingKey }) {
     const budget = Number(params.budget ?? 64);

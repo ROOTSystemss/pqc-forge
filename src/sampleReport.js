@@ -8,6 +8,7 @@ import { scanRepository } from './scanner.js';
 import { migrateRepository } from './migrator.js';
 import { buildReadinessReport, signReport, verifyReport, renderReportHtml, cbomFileText, cbomFileMatches } from './readinessReport.js';
 import { SNAPSHOT_SCHEMA, verifySnapshot } from './inventorySnapshot.js';
+import { ENDPOINT_INVENTORY_SCHEMA, verifyEndpointInventory } from './endpointInventory.js';
 import { EXPORT_SCHEMA, verifyAccountExport } from './accountExport.js';
 
 const SAMPLE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples', 'readiness-sample');
@@ -32,13 +33,14 @@ export function publicVerifyReport(doc, publishedKeys, { cbomText = null } = {})
   // AD-071: signed inventory snapshots are checked the same way (published keys only).
   const isSnapshot = doc && doc.schema === SNAPSHOT_SCHEMA;
   const isExport = doc && doc.schema === EXPORT_SCHEMA; // AD-077 account export bundles
-  const r = isSnapshot ? verifySnapshot(doc, publishedKeys) : isExport ? verifyAccountExport(doc, publishedKeys) : verifyReport(doc, publishedKeys);
+  const isEndpoints = doc && doc.schema === ENDPOINT_INVENTORY_SCHEMA; // AD-065
+  const r = isSnapshot ? verifySnapshot(doc, publishedKeys) : isExport ? verifyAccountExport(doc, publishedKeys) : isEndpoints ? verifyEndpointInventory(doc, publishedKeys) : verifyReport(doc, publishedKeys);
   return {
     valid: r.valid === true,
-    kind: isSnapshot ? 'inventory-snapshot' : isExport ? 'account-export' : 'readiness-report',
+    kind: isSnapshot ? 'inventory-snapshot' : isExport ? 'account-export' : isEndpoints ? 'endpoint-inventory' : 'readiness-report',
     errors: r.errors || [],
     sample: r.valid === true && doc.sample === true,
-    organization: r.valid === true ? (isSnapshot ? doc.label : doc.organization) : null,
+    organization: r.valid === true ? (isSnapshot || isEndpoints ? doc.label : doc.organization) : null,
     generatedAt: r.valid === true ? doc.generatedAt : null,
     receiptDigest: r.valid === true ? doc.receiptDigest : null,
     // AD-062: when the CBOM file is sent too, whether it is exactly the one this (valid) report names.
