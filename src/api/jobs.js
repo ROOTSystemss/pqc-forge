@@ -19,7 +19,8 @@ import {
 } from '../breaklab/receipt.js';
 import { tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { resolveWorkspacePath } from './workspace.js';
-import { listDocDirs, readDoc, writeDoc } from './docStore.js';
+import { listDocDirs, readDoc, writeDoc, usingDatabase } from './docStore.js';
+import { readStoredFile, storeFile } from './fileStore.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
 import { buildInventorySnapshot, signSnapshot } from '../inventorySnapshot.js';
 import { scanDependencies } from '../dependencyCrypto.js';
@@ -366,6 +367,15 @@ export function createJobQueue({
     await writeDoc(apiHome, path.join(jobDirectory(apiHome, tenantId, jobId), 'job.json'), record);
   }
 
+  async function storeJobFiles(jobDir) {
+    if (!usingDatabase()) return;
+    for (const name of Object.keys(DOWNLOADABLE_JOB_FILES)) {
+      let data;
+      try { data = await fs.readFile(path.join(jobDir, name)); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+      await storeFile(apiHome, path.join(jobDir, name), data);
+    }
+  }
+
   async function execute(entry) {
     running.set(entry.jobId, { tenantId: entry.tenantId, isDocker: entry.isDocker });
     const jobDir = jobDirectory(apiHome, entry.tenantId, entry.jobId);
@@ -382,6 +392,8 @@ export function createJobQueue({
         apiHome, tenantId: entry.tenantId, jobId: entry.jobId, jobDir, params: entry.record.params, signingKey, reportProgress, safety
       }), apiHome, entry.tenantId);
       await writeDoc(apiHome, path.join(jobDir, 'result.json'), result);
+      // N-PF-06: keep the job's downloadable files in Postgres too (with DATABASE_URL), so downloads survive a restart.
+      await storeJobFiles(jobDir);
       entry.record.status = 'succeeded';
     } catch (error) {
       entry.record.status = 'failed';
@@ -464,11 +476,17 @@ export function createJobQueue({
   async function getFile(tenantId, jobId, name) {
     if (!JOB_ID_PATTERN.test(jobId ?? '') || !Object.hasOwn(DOWNLOADABLE_JOB_FILES, name)) return null;
     if (!(await getJob(tenantId, jobId))) return null;
+    const file = path.join(jobDirectory(apiHome, tenantId, jobId), name);
     try {
-      return { body: await fs.readFile(path.join(jobDirectory(apiHome, tenantId, jobId), name)), contentType: DOWNLOADABLE_JOB_FILES[name] };
+      return { body: await fs.readFile(file), contentType: DOWNLOADABLE_JOB_FILES[name] };
     } catch (error) {
-      if (error.code === 'ENOENT') return null;
-      throw error;
+      if (error.code !== 'ENOENT') throw error;
+      // N-PF-06: the disk copy is gone after a restart; serve (and put back) the stored copy.
+      const stored = await readStoredFile(apiHome, file);
+      if (!stored) return null;
+      await fs.mkdir(path.dirname(file), { recursive: true }).catch(() => {});
+      await fs.writeFile(file, stored).catch(() => {});
+      return { body: stored, contentType: DOWNLOADABLE_JOB_FILES[name] };
     }
   }
 

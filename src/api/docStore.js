@@ -8,7 +8,8 @@ import path from 'node:path';
  *
  * Without DATABASE_URL they are files under apiHome, as before. With DATABASE_URL they are rows in one
  * Postgres table keyed by the same relative path, so they survive a host that loses its disk on sleep or
- * redeploy (the hosted service runs on one). Uploaded workspaces and job output files stay on disk.
+ * redeploy (the hosted service runs on one). Uploaded workspaces and job output files are files on disk, and with
+ * DATABASE_URL also kept in Postgres by fileStore.js (N-PF-06), so they survive a restart too.
  */
 
 const TABLE = 'pqcf_documents';
@@ -33,6 +34,12 @@ async function db() {
   }
   await ready;
   return pool;
+}
+
+/** The shared Postgres pool (fileStore.js keeps its table in the same database). Only with DATABASE_URL. */
+export async function docDb() {
+  if (!usingDatabase()) throw new Error('No DATABASE_URL.');
+  return db();
 }
 
 /** Closes the database pool (tests, shutdown). */

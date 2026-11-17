@@ -4,6 +4,7 @@ import path from 'node:path';
 import { CONTENT_TYPES, resolveStaticFile } from './static.js';
 import { authenticate, createTenant, tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { createWorkspace, workspaceExists, resolveWorkspacePath } from './workspace.js';
+import { storedWorkspaceUsage } from './fileStore.js';
 import { createJobQueue, JOB_TYPES } from './jobs.js';
 import { verifyReceipt } from '../breaklab/receipt.js';
 import { loadSigningKey } from '../signing.js';
@@ -183,7 +184,10 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         if (!Array.isArray(body.files)) throw new HttpError(400, 'Body requires a files array: [{ path, content, encoding? }].');
         // Storage quota per account (abuseLimits.js), checked before anything is written.
         const quota = quotaFor((await entitlement(apiHome, tenant.tenantId)).plan);
-        const used = await workspaceUsage(tenantWorkspacesDirectory(apiHome, tenant.tenantId));
+        const onDisk = await workspaceUsage(tenantWorkspacesDirectory(apiHome, tenant.tenantId));
+        // N-PF-06: after a restart the disk is empty but the stored uploads still count.
+        const stored = await storedWorkspaceUsage(apiHome, tenantWorkspacesDirectory(apiHome, tenant.tenantId));
+        const used = { workspaces: Math.max(onDisk.workspaces, stored.workspaces), bytes: Math.max(onDisk.bytes, stored.bytes) };
         if (used.workspaces >= quota.workspaces) throw new HttpError(413, 'Workspace limit reached: this account keeps at most ' + quota.workspaces + ' workspaces.');
         if (used.bytes + uploadBytes(body.files) > quota.bytes) throw new HttpError(413, 'Storage limit reached: this account may keep at most ' + Math.round(quota.bytes / 1048576) + ' MiB of uploaded files.');
         let result;

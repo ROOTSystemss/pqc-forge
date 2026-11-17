@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createDoc, deleteDocsUnder, listDocDirs, readDoc } from './docStore.js';
+import { deleteFilesUnder } from './fileStore.js';
 
 export const TENANT_SCHEMA = 'pqc-forge.tenant/v1';
 
@@ -93,8 +94,10 @@ export async function deleteTenant(apiHome, tenantId) {
   if (!/^t_[0-9a-f]{16}$/.test(tenantId ?? '')) throw new Error('Not a tenant id.');
   const directory = tenantDirectory(apiHome, tenantId);
   const records = await deleteDocsUnder(apiHome, directory);
+  // N-PF-06: uploaded workspaces and job output files kept in Postgres go too.
+  const storedFiles = await deleteFilesUnder(apiHome, directory);
   let removedFiles = false;
   try { await fs.access(directory); removedFiles = true; } catch { /* nothing on disk */ }
   await fs.rm(directory, { recursive: true, force: true, maxRetries: 3 });
-  return { tenantId, databaseRecordsDeleted: records, diskDirectoryRemoved: removedFiles };
+  return { tenantId, databaseRecordsDeleted: records, storedFilesDeleted: storedFiles, diskDirectoryRemoved: removedFiles };
 }

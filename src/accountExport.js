@@ -12,6 +12,7 @@ import { canonicalJson } from './canonical.js';
 import { signPayload } from './signing.js';
 import { verifyReceipt } from './breaklab/receipt.js';
 import { listDocsUnder } from './api/docStore.js';
+import { restoreFilesUnder } from './api/fileStore.js';
 
 export const EXPORT_SCHEMA = 'pqc-forge.account-export/v1';
 export const DEFAULT_INLINE_LIMIT = 25 * 1024 * 1024; // file contents beyond this total are listed (name, size, SHA-256) only
@@ -43,6 +44,8 @@ async function walk(dir, base = dir) {
 export async function buildAccountExport({ apiHome, tenant, signingKey, inlineLimit = DEFAULT_INLINE_LIMIT, now = new Date() }) {
   const dir = path.join(apiHome, 'tenants', tenant.tenantId);
   const records = (await listDocsUnder(apiHome, dir)).map(({ key, value }) => ({ key, value: stripSecrets(key, value) }));
+  // N-PF-06: after a restart the files live only in Postgres; put them back on disk so the walk below sees them.
+  await restoreFilesUnder(apiHome, dir);
   const files = [];
   let inlined = 0;
   for (const { full, rel } of await walk(dir)) {

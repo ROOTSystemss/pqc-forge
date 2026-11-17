@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { tenantWorkspacesDirectory } from './tenants.js';
+import { deleteFilesUnder, restoreFilesUnder, storeFile } from './fileStore.js';
 
 const MAX_FILES = 2000;
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MiB per file
@@ -61,21 +62,25 @@ export async function createWorkspace(apiHome, tenantId, files) {
       if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) throw new Error(`Path escapes workspace: ${relativePath}`);
       await fs.mkdir(path.dirname(absolute), { recursive: true });
       await fs.writeFile(absolute, buffer);
+      // N-PF-06: with DATABASE_URL the upload is also kept in Postgres, so it survives a restart.
+      await storeFile(apiHome, absolute, buffer);
       written.push({ path: relativePath, bytes: buffer.length });
     }
   } catch (error) {
     await fs.rm(root, { recursive: true, force: true }).catch(() => {});
+    await deleteFilesUnder(apiHome, root).catch(() => {});
     throw error;
   }
   return { workspaceId, root, files: written, totalBytes };
 }
 
 export async function workspaceExists(apiHome, tenantId, workspaceId) {
+  let root;
+  try { ({ root } = resolveWorkspacePath(apiHome, tenantId, workspaceId)); } catch { return false; }
   try {
-    const { root } = resolveWorkspacePath(apiHome, tenantId, workspaceId);
     const stat = await fs.stat(root);
-    return stat.isDirectory();
-  } catch {
-    return false;
-  }
+    if (stat.isDirectory()) return true;
+  } catch { /* not on disk: maybe the host restarted */ }
+  // N-PF-06: a restarted host has an empty disk; put the stored copy back before anything uses the workspace.
+  try { return (await restoreFilesUnder(apiHome, root)) > 0; } catch { return false; }
 }
