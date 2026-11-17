@@ -3,6 +3,7 @@ import type { PqcForgeClient } from '../api';
 import { ApiError } from '../api';
 import type { ReceiptVerification } from '../types';
 import { ErrorNote, PassFailBadge, Panel } from './common';
+import { FieldHint, hintId } from './FieldHint';
 
 const PLACEHOLDER = `Paste a PQC Forge receipt JSON here — the signed output of scan, migrate,
 verify, breaklab, runtime-probe, staging-gate, or any other command that
@@ -38,10 +39,11 @@ export function ReceiptTab({ client }: { client: PqcForgeClient | null }) {
   return (
     <div className="tab-grid single">
       <Panel title="Verify a receipt">
-        <textarea
+        <textarea aria-describedby={hintId('ReceiptTab.receiptJson')}
           rows={16} value={raw} onChange={(event) => setRaw(event.target.value)}
           placeholder={PLACEHOLDER} spellCheck={false}
         />
+              <FieldHint k="ReceiptTab.receiptJson" />
         <div className="run-row">
           <button className="primary" onClick={handleVerify} disabled={!client || busy || !raw.trim()}>Verify</button>
         </div>

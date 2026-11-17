@@ -6,6 +6,7 @@ import { EXAMPLE_WORKSPACES } from '../fixtures';
 import type { WorkspaceFile } from '../types';
 import { EmptyState, ErrorNote, Panel, Spinner } from './common';
 import { WorkspaceEditor } from './WorkspaceEditor';
+import { FieldHint, hintId } from './FieldHint';
 
 interface ReportJobResult {
   readiness: { score: number; stage: string; stageLabel: string; stageSummary: string };
@@ -20,6 +21,7 @@ export function ReportTab({ client, onBuyCredit }: { client: PqcForgeClient | nu
   const [files, setFiles] = useState<WorkspaceFile[]>(EXAMPLE_WORKSPACES['Nginx (classical groups)']);
   const [organization, setOrganization] = useState('');
   const [endpoints, setEndpoints] = useState('');
+  const [dataLifetimeYears, setDataLifetimeYears] = useState(10);
   const [credits, setCredits] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function ReportTab({ client, onBuyCredit }: { client: PqcForgeClient | nu
     setUploading(true);
     try {
       const workspace = files.length ? await client.createWorkspace(files) : null;
-      await run('readiness-report', { organization: organization.trim() || 'Your organization', workspaceId: workspace ? workspace.workspaceId : undefined, endpoints: list });
+      await run('readiness-report', { organization: organization.trim() || 'Your organization', workspaceId: workspace ? workspace.workspaceId : undefined, endpoints: list, dataLifetimeYears });
     } catch (err) {
       setLocalError(err instanceof ApiError ? err.message : String(err));
     } finally {
@@ -68,9 +70,14 @@ export function ReportTab({ client, onBuyCredit }: { client: PqcForgeClient | nu
         <p className="muted small">A signed post-quantum readiness report built from your real code and live endpoints: readiness score and stage, a fix-first plan, every finding with file and line, deadlines (NIST, CNSA 2.0, EU) and where it counts as evidence (PCI DSS 12.3.3, ISO 27001 A.8.24, NIS2, DORA). One report credit per report; the credit is used only when the report is produced.</p>
         <p className="small">Report credits: <strong>{credits ?? '…'}</strong>{noCredit && <> · <button type="button" className="link-button" onClick={onBuyCredit}>buy a report credit</button></>}</p>
         <label htmlFor="report-org">Organization name (shown on the report)</label>
-        <input id="report-org" type="text" maxLength={120} value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Acme Payments Ltd" />
+        <input aria-describedby={hintId('ReportTab.organization')} id="report-org" type="text" maxLength={120} value={organization} onChange={(e) => setOrganization(e.target.value)} placeholder="Acme Payments Ltd" />
+              <FieldHint k="ReportTab.organization" />
         <label htmlFor="report-endpoints">Live endpoints to check (up to 10, public only)</label>
-        <textarea id="report-endpoints" rows={3} value={endpoints} onChange={(e) => setEndpoints(e.target.value)} placeholder={'shop.example.com:443\napi.example.com'} />
+        <textarea aria-describedby={hintId('ReportTab.endpoints')} id="report-endpoints" rows={3} value={endpoints} onChange={(e) => setEndpoints(e.target.value)} placeholder={'shop.example.com:443\napi.example.com'} />
+              <FieldHint k="ReportTab.endpoints" />
+          <label htmlFor="report-lifetime">How long this data must stay confidential (years)</label>
+          <input aria-describedby={hintId('ReportTab.dataLifetimeYears')} id="report-lifetime" type="number" min={0} max={100} step={1} value={dataLifetimeYears} onChange={(e) => setDataLifetimeYears(Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))))} />
+              <FieldHint k="ReportTab.dataLifetimeYears" />
         <p className="muted small">Code and configuration to scan (paste or edit files below):</p>
         <WorkspaceEditor files={files} onChange={setFiles} />
         <div className="run-row">

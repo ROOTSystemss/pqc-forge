@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, PqcForgeClient } from '../api';
 import type { PlansResponse, SubscriptionResponse } from '../types';
 import { EmptyState, ErrorNote, Panel, Spinner } from './common';
+import { FieldHint, hintId } from './FieldHint';
 
 export function BillingTab({ client }: { client: PqcForgeClient }) {
   const [plans, setPlans] = useState<PlansResponse | null>(null);
@@ -124,7 +125,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
             )}
             <div>
               <label htmlFor="buyer-country">Country you are buying from</label>
-              <input
+              <input aria-describedby={hintId('BillingTab.buyerCountry')}
                 id="buyer-country"
                 type="text"
                 inputMode="text"
@@ -134,11 +135,12 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
                 value={country}
                 onChange={(event) => setCountry(event.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase())}
               />
+              <FieldHint k="BillingTab.buyerCountry" />
               <p className="muted small">Two-letter code. PQC Forge is cryptographic software, so export-control rules apply; it is checked, not stored.</p>
             </div>
             {selfServe.some((plan) => plan.perRepo) && <div>
               <label htmlFor="pro-qty">Pro repositories</label>
-              <input
+              <input aria-describedby={hintId('BillingTab.proQuantity')}
                 id="pro-qty"
                 type="number"
                 min={1}
@@ -146,6 +148,7 @@ export function BillingTab({ client }: { client: PqcForgeClient }) {
                 value={quantity}
                 onChange={(event) => setQuantity(Math.min(500, Math.max(1, Number(event.target.value) || 1)))}
               />
+              <FieldHint k="BillingTab.proQuantity" />
             </div>}
             <div className="billing-plan-grid">
               {selfServe.map((plan) => (

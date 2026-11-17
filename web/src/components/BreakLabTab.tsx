@@ -4,6 +4,7 @@ import { useJobRunner } from '../useJobRunner';
 import { DEMO_SCENARIO } from '../fixtures';
 import type { BreakLabReceipt, ReceiptVerification } from '../types';
 import { EmptyState, ErrorNote, JsonBlock, PassFailBadge, Panel, Spinner } from './common';
+import { FieldHint, hintId } from './FieldHint';
 
 export function BreakLabTab({ client }: { client: PqcForgeClient | null }) {
   const [budget, setBudget] = useState(32);
@@ -36,11 +37,13 @@ export function BreakLabTab({ client }: { client: PqcForgeClient | null }) {
         <div className="run-row">
           <div>
             <label>Budget (evaluations per strategy)</label>
-            <input type="number" min={1} value={budget} onChange={(event) => setBudget(Number(event.target.value))} />
+            <input aria-describedby={hintId('BreakLabTab.budget')} type="number" min={1} value={budget} onChange={(event) => setBudget(Number(event.target.value))} />
+              <FieldHint k="BreakLabTab.budget" />
           </div>
           <div>
             <label>Seed</label>
-            <input type="number" value={seed} onChange={(event) => setSeed(Number(event.target.value))} />
+            <input aria-describedby={hintId('BreakLabTab.seed')} type="number" value={seed} onChange={(event) => setSeed(Number(event.target.value))} />
+              <FieldHint k="BreakLabTab.seed" />
           </div>
           <button
             className="primary" style={{ alignSelf: 'flex-end' }}

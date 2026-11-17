@@ -6,6 +6,7 @@ import { EXAMPLE_WORKSPACES } from '../fixtures';
 import type { ScanReport, WorkspaceFile } from '../types';
 import { EmptyState, ErrorNote, Panel, SeverityBadge, SeverityBar, Spinner } from './common';
 import { WorkspaceEditor } from './WorkspaceEditor';
+import { FieldHint, hintId } from './FieldHint';
 
 export function ScanTab({ client }: { client: PqcForgeClient | null }) {
   const [files, setFiles] = useState<WorkspaceFile[]>(EXAMPLE_WORKSPACES['Nginx (classical groups)']);
@@ -36,9 +37,10 @@ export function ScanTab({ client }: { client: PqcForgeClient | null }) {
         <WorkspaceEditor files={files} onChange={setFiles} />
         <div className="run-row">
           <label className="checkbox-label">
-            <input type="checkbox" checked={noIgnore} onChange={(event) => setNoIgnore(event.target.checked)} />
+            <input aria-describedby={hintId('ScanTab.noIgnore')} type="checkbox" checked={noIgnore} onChange={(event) => setNoIgnore(event.target.checked)} />
             Ignore audited suppressions (--no-ignore)
           </label>
+              <FieldHint k="ScanTab.noIgnore" />
           <button className="primary" onClick={handleRun} disabled={!client || busy}>
             {busy ? <Spinner /> : null} Run scan
           </button>

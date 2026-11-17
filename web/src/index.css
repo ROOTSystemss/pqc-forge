@@ -274,3 +274,8 @@ tr:last-child td { border-bottom: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* AD-072: plain-English help under form fields */
+.field-hint { display: block; font-size: 12.5px; line-height: 1.45; color: var(--muted, #5b6876); margin: 3px 0 10px; font-weight: 400; }
+.field-hint-example { font-style: italic; }
+

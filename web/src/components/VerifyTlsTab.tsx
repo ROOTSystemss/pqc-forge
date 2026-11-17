@@ -3,6 +3,7 @@ import type { PqcForgeClient } from '../api';
 import { useJobRunner } from '../useJobRunner';
 import type { Receipt, ReceiptVerification, TlsEvidence } from '../types';
 import { ErrorNote, PassFailBadge, Panel, Spinner } from './common';
+import { FieldHint, hintId } from './FieldHint';
 
 const VERDICT_LABEL: Record<string, string> = {
   'full-pq-observed': 'Full PQ observed (key exchange + authentication)',
@@ -27,18 +28,20 @@ export function VerifyTlsTab({ client }: { client: PqcForgeClient | null }) {
       <Panel title="Endpoint">
         <label>Target (host:port or https URL)</label>
         <div className="run-row">
-          <input
+          <input aria-describedby={hintId('VerifyTlsTab.target')}
             type="text" value={target} onChange={(event) => setTarget(event.target.value)}
             placeholder="example.com:443"
           />
+              <FieldHint k="VerifyTlsTab.target" />
           <button className="primary" onClick={() => run('verify', { target, insecure })} disabled={!client || running || !target.trim()}>
             {running ? <Spinner /> : null} Verify
           </button>
         </div>
         <label className="checkbox-label">
-          <input type="checkbox" checked={insecure} onChange={(event) => setInsecure(event.target.checked)} />
+          <input aria-describedby={hintId('VerifyTlsTab.insecure')} type="checkbox" checked={insecure} onChange={(event) => setInsecure(event.target.checked)} />
           Skip certificate verification (self-signed / staging endpoints)
         </label>
+              <FieldHint k="VerifyTlsTab.insecure" />
         <ErrorNote message={error} />
       </Panel>
 

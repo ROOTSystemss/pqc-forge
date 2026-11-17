@@ -6,6 +6,7 @@ import { EXAMPLE_WORKSPACES } from '../fixtures';
 import type { MigrationResult, Receipt, ReceiptVerification, WorkspaceFile } from '../types';
 import { EmptyState, ErrorNote, PassFailBadge, Panel, Spinner } from './common';
 import { WorkspaceEditor } from './WorkspaceEditor';
+import { FieldHint, hintId } from './FieldHint';
 
 export function MigrateTab({ client }: { client: PqcForgeClient | null }) {
   const [files, setFiles] = useState<WorkspaceFile[]>(EXAMPLE_WORKSPACES['Nginx (classical groups)']);
@@ -44,16 +45,18 @@ export function MigrateTab({ client }: { client: PqcForgeClient | null }) {
         <WorkspaceEditor files={files} onChange={setFiles} />
         <div className="run-row column">
           <label className="checkbox-label">
-            <input type="checkbox" checked={write} onChange={(event) => setWrite(event.target.checked)} />
+            <input aria-describedby={hintId('MigrateTab.write')} type="checkbox" checked={write} onChange={(event) => setWrite(event.target.checked)} />
             Write changes (otherwise dry-run only)
           </label>
+              <FieldHint k="MigrateTab.write" />
           <label className="checkbox-label" style={write ? undefined : { opacity: 0.5 }}>
-            <input
+            <input aria-describedby={hintId('MigrateTab.acknowledgeRuntime')}
               type="checkbox" checked={acknowledgeRuntime} disabled={!write}
               onChange={(event) => setAcknowledgeRuntime(event.target.checked)}
             />
             I confirm the deployment runtime supports X25519MLKEM768 (required to write)
           </label>
+              <FieldHint k="MigrateTab.acknowledgeRuntime" />
           <button className="primary" onClick={handleRun} disabled={!client || busy || (write && !acknowledgeRuntime)}>
             {busy ? <Spinner /> : null} Run migration
           </button>

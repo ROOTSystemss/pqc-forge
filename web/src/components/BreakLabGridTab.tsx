@@ -5,6 +5,7 @@ import { DEMO_SCENARIO } from '../fixtures';
 import type { BreakLabGridCell, BreakLabGridResult } from '../types';
 import { ErrorNote, Panel, Spinner } from './common';
 import { NetworkGrid } from './NetworkGrid';
+import { FieldHint, hintId } from './FieldHint';
 
 /**
  * Renders the exhaustive client×server matrix live, cell by cell, as the
@@ -36,7 +37,8 @@ export function BreakLabGridTab({ client }: { client: PqcForgeClient | null }) {
         <div className="run-row">
           <div>
             <label>Cell pace (ms)</label>
-            <input type="number" min={0} value={paceMs} onChange={(event) => setPaceMs(Number(event.target.value))} />
+            <input aria-describedby={hintId('BreakLabGridTab.paceMs')} type="number" min={0} value={paceMs} onChange={(event) => setPaceMs(Number(event.target.value))} />
+              <FieldHint k="BreakLabGridTab.paceMs" />
           </div>
           <button
             className="primary" style={{ alignSelf: 'flex-end' }}

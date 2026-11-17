@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError, PqcForgeClient, signup } from '../api';
 import { ErrorNote, Panel, Spinner } from './common';
+import { FieldHint, hintId } from './FieldHint';
 
 type Mode = 'signup' | 'key';
 
@@ -86,15 +87,18 @@ export function ConnectPanel({
           <form onSubmit={handleSignup} className="connect-form">
             <div>
               <label htmlFor="signup-base">API base URL</label>
-              <input id="signup-base" type="text" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://localhost:8787" />
+              <input aria-describedby={hintId('ConnectPanel.signupBaseUrl')} id="signup-base" type="text" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://localhost:8787" />
+              <FieldHint k="ConnectPanel.signupBaseUrl" />
             </div>
             <div>
               <label htmlFor="signup-name">Name</label>
-              <input id="signup-name" type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="Acme Security" required minLength={2} maxLength={80} />
+              <input aria-describedby={hintId('ConnectPanel.signupName')} id="signup-name" type="text" value={name} onChange={(event) => setName(event.target.value)} placeholder="Acme Security" required minLength={2} maxLength={80} />
+              <FieldHint k="ConnectPanel.signupName" />
             </div>
             <div>
               <label htmlFor="signup-email">Email <span className="muted">(optional)</span></label>
-              <input id="signup-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" />
+              <input aria-describedby={hintId('ConnectPanel.signupEmail')} id="signup-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" />
+              <FieldHint k="ConnectPanel.signupEmail" />
             </div>
             <button className="primary" type="submit" disabled={busy || !baseUrl.trim() || name.trim().length < 2}>
               {busy ? <><Spinner /> Creating…</> : 'Start free →'}
@@ -113,11 +117,13 @@ export function ConnectPanel({
           <form onSubmit={handleConnect} className="connect-form">
             <div>
               <label htmlFor="key-base">API base URL</label>
-              <input id="key-base" type="text" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://localhost:8787" />
+              <input aria-describedby={hintId('ConnectPanel.keyBaseUrl')} id="key-base" type="text" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="http://localhost:8787" />
+              <FieldHint k="ConnectPanel.keyBaseUrl" />
             </div>
             <div>
               <label htmlFor="key-api">Tenant API key</label>
-              <input id="key-api" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="pqcf_t_…" />
+              <input aria-describedby={hintId('ConnectPanel.apiKey')} id="key-api" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="pqcf_t_…" />
+              <FieldHint k="ConnectPanel.apiKey" />
             </div>
             <button className="primary" type="submit" disabled={busy || !baseUrl.trim() || !apiKey.trim()}>
               {busy ? <><Spinner /> Connecting…</> : 'Connect →'}

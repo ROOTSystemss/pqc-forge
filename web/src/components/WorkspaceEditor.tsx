@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { WorkspaceFile } from '../types';
 import { EXAMPLE_WORKSPACES } from '../fixtures';
+import { FieldHint, hintId } from './FieldHint';
 
 /**
  * Edits the in-browser file list that becomes a workspace upload
@@ -44,7 +45,7 @@ export function WorkspaceEditor({ files, onChange }: { files: WorkspaceFile[]; o
           ))}
           <button className="ghost" onClick={addFile} title="Add file">+ file</button>
         </div>
-        <select
+        <select aria-describedby={hintId('WorkspaceEditor.example')}
           defaultValue=""
           onChange={(event) => {
             const key = event.target.value;
@@ -55,6 +56,7 @@ export function WorkspaceEditor({ files, onChange }: { files: WorkspaceFile[]; o
           <option value="" disabled>Load example…</option>
           {Object.keys(EXAMPLE_WORKSPACES).map((key) => <option key={key} value={key}>{key}</option>)}
         </select>
+              <FieldHint k="WorkspaceEditor.example" />
       </div>
 
       {current && (
@@ -62,19 +64,21 @@ export function WorkspaceEditor({ files, onChange }: { files: WorkspaceFile[]; o
           <div className="file-editor-chrome">
             <span className="traffic" /><span className="traffic" /><span className="traffic" />
             <div className="file-editor-row">
-              <input
+              <input aria-describedby={hintId('WorkspaceEditor.filePath')}
                 type="text" value={current.path}
                 onChange={(event) => updateFile(active, { path: event.target.value })}
                 placeholder="relative/path.conf"
               />
+              <FieldHint k="WorkspaceEditor.filePath" />
             </div>
             <button className="ghost" onClick={() => removeFile(active)} disabled={files.length <= 1}>remove</button>
           </div>
-          <textarea
+          <textarea aria-describedby={hintId('WorkspaceEditor.fileContent')}
             rows={12} value={current.content} spellCheck={false}
             onChange={(event) => updateFile(active, { content: event.target.value })}
             placeholder="Paste configuration content here…"
           />
+              <FieldHint k="WorkspaceEditor.fileContent" />
         </div>
       )}
     </div>
