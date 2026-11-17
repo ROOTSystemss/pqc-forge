@@ -36,6 +36,18 @@ async function pollJob(base, headers, jobId, { timeoutMs = 15000 } = {}) {
   throw new Error(`Job ${jobId} did not reach a terminal state within ${timeoutMs}ms`);
 }
 
+// Polls a job until `ready(record)` is true (deadline instead of a fixed sleep, so slow CI runners do not flake).
+async function waitForJob(base, headers, jobId, ready, { timeoutMs = 15000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let record = null;
+  while (Date.now() < deadline) {
+    record = await (await fetch(`${base}/v1/jobs/${jobId}`, { headers })).json();
+    if (ready(record)) return record;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Job ${jobId} did not reach the expected state within ${timeoutMs}ms (last: ${JSON.stringify(record && { status: record.status, progress: record.progress && record.progress.completed })})`);
+}
+
 test('health endpoint requires no authentication', async () => {
   const ctx = await startServer();
   try {
@@ -175,24 +187,23 @@ test('breaklab-grid job resolves the real client×server matrix incrementally, o
       method: 'POST', headers: tenant.headers,
       // A real (if short) pace between cells so a poller mid-run can
       // observe a genuinely partial `progress`, not just queued/succeeded.
-      body: JSON.stringify({ type: 'breaklab-grid', params: { scenario: demoScenario, paceMs: 60 } })
+      body: JSON.stringify({ type: 'breaklab-grid', params: { scenario: demoScenario, paceMs: 250 } })
     });
     const submitted = await submit.json();
     assert.equal(submitted.status, 'queued');
     assert.equal(submitted.progress, null);
 
-    // Poll once shortly after submission: with 9 cells (3 clients × 3
-    // servers) at 60ms apart, this should land mid-run with some cells
-    // resolved and fewer than the total — proof this is real incremental
-    // progress, not a single atomic jump from empty to complete.
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    const midRun = await (await fetch(`${ctx.base}/v1/jobs/${submitted.jobId}`, { headers: tenant.headers })).json();
+    // Catch the run mid-flight: with 9 cells (3 clients × 3 servers) 250ms apart the run lasts ~2s after its
+    // first cell. Polling (instead of one fixed wait, which flaked on slow CI runners when the job had not
+    // started yet) until the first cell is in leaves ~1.75s of margin for "fewer than the total" - proof this
+    // is real incremental progress, not a single atomic jump from empty to complete.
+    const midRun = await waitForJob(ctx.base, tenant.headers, submitted.jobId, (job) => job.progress && job.progress.completed > 0, { timeoutMs: 15000 });
     assert.equal(midRun.progress.total, 9);
     assert.ok(midRun.progress.completed > 0, 'expected at least one cell resolved by now');
     assert.ok(midRun.progress.completed < midRun.progress.total, 'expected the run to still be mid-flight, not already complete');
     assert.equal(midRun.progress.cells.length, midRun.progress.completed);
 
-    const finished = await pollJob(ctx.base, tenant.headers, submitted.jobId, { timeoutMs: 5000 });
+    const finished = await pollJob(ctx.base, tenant.headers, submitted.jobId, { timeoutMs: 15000 });
     assert.equal(finished.status, 'succeeded');
     assert.equal(finished.progress.completed, 9);
 
@@ -241,18 +252,25 @@ test('breaklab-grid rejects a scenario whose client×server matrix exceeds the c
 
     // A tenant-supplied paceMs of an hour must not be allowed to pin a
     // concurrency slot for anywhere near that long - it should clamp to
-    // the 2000ms cap. The first cell resolves immediately (the pace delay
-    // comes *after* each cell), so after ~2.2s an unclamped hour-long pace
-    // would still show exactly 1 cell done - clamping shows a 2nd.
+    // the 2000ms cap. The first cell resolves immediately and the pace delay
+    // comes *after* each cell, so the 2nd cell lands one pace after the 1st.
+    // Bounded on both sides, with no fixed wait (a fixed 2.2s wait flaked on a slow Windows CI runner,
+    // 2026-11-17, run 44029997198): the 2nd cell must arrive within 20s (an unclamped hour-long pace never
+    // would) and not before ~1.8s after submission (a pace really was applied; a slow machine only makes it
+    // later, so this side cannot flake).
+    const submittedAt = Date.now();
     const clamped = await fetch(`${ctx.base}/v1/jobs`, {
       method: 'POST', headers: tenant.headers,
       body: JSON.stringify({ type: 'breaklab-grid', params: { scenario: demoScenario, paceMs: 60 * 60 * 1000 } })
     });
     const clampedSubmitted = await clamped.json();
-    await new Promise((resolve) => setTimeout(resolve, 2200));
-    const midRun = await (await fetch(`${ctx.base}/v1/jobs/${clampedSubmitted.jobId}`, { headers: tenant.headers })).json();
-    assert.equal(midRun.status, 'running');
-    assert.ok(midRun.progress.completed >= 2, `expected paceMs to be clamped to 2000ms (>=2 cells by now), got ${midRun.progress.completed}`);
+    const firstCell = await waitForJob(ctx.base, tenant.headers, clampedSubmitted.jobId, (job) => job.progress && job.progress.completed >= 1, { timeoutMs: 15000 });
+    assert.equal(firstCell.status, 'running');
+    const midRun = await waitForJob(ctx.base, tenant.headers, clampedSubmitted.jobId, (job) => job.progress && job.progress.completed >= 2, { timeoutMs: 20000 });
+    const elapsed = Date.now() - submittedAt;
+    assert.equal(midRun.status, 'running', 'an hour-long pace clamped to 2s still leaves the 9-cell run in progress');
+    assert.ok(midRun.progress.completed >= 2, `expected paceMs to be clamped to 2000ms (a 2nd cell), got ${midRun.progress.completed}`);
+    assert.ok(elapsed >= 1800, `the 2nd cell arrived after ${elapsed}ms: the pace was not applied at all`);
   } finally {
     await ctx.close();
   }
