@@ -19,10 +19,10 @@ const slash = (p) => String(p ?? '').replace(/\\/g, '/');
 // E4c (2026-11-02): each deadline names its source document. Check the current text before relying on a date.
 export const DEADLINES = [
   { body: 'NIST FIPS 203, 204, 205 (final, August 2024)', text: 'ML-KEM, ML-DSA and SLH-DSA are published standards: the algorithms to migrate to.', source: 'https://csrc.nist.gov/pubs/fips/203/final' },
-  { body: 'NIST IR 8547 (initial public draft, November 2024)', text: 'RSA and elliptic-curve algorithms at 112-bit security deprecated after 2030 and disallowed after 2035.', source: 'https://csrc.nist.gov/pubs/ir/8547/ipd' },
-  { body: 'NSA CNSA 2.0 (US national security systems)', text: 'Web servers, browsers and cloud services to support and prefer CNSA 2.0 algorithms now, and use them exclusively by 2033; the full transition by 2035.', source: 'https://media.defense.gov/2022/Sep/07/2003071834/-1/-1/0/CSA_CNSA_2.0_ALGORITHMS_.PDF' },
-  { body: 'US NSM-10 (May 2022) and OMB M-23-02 (November 2022)', text: 'US federal goal: mitigate quantum risk as much as feasible by 2035; agencies inventory quantum-vulnerable cryptography every year.', source: 'https://www.whitehouse.gov/wp-content/uploads/2022/11/M-23-02-M-Memo-on-Migrating-to-Post-Quantum-Cryptography.pdf' },
-  { body: 'EU coordinated PQC roadmap (June 2025)', text: 'Member States and operators start the transition by end of 2026; high-risk use cases complete by 2030; as much as feasible by 2035.', source: 'https://digital-strategy.ec.europa.eu/en/library/coordinated-implementation-roadmap-transition-post-quantum-cryptography' },
+  { body: 'NIST IR 8547 (initial public draft, November 2024)', text: 'RSA and elliptic-curve algorithms at 112-bit security deprecated after 2030 and disallowed after 2035.', source: 'https://csrc.nist.gov/pubs/ir/8547/ipd', milestones: [{ date: '2030-12-31', kind: 'deprecated', what: 'RSA and elliptic-curve (112-bit) deprecated after 2030' }, { date: '2035-12-31', kind: 'disallowed', what: 'RSA and elliptic-curve disallowed after 2035' }] },
+  { body: 'NSA CNSA 2.0 (US national security systems)', text: 'Web servers, browsers and cloud services to support and prefer CNSA 2.0 algorithms now, and use them exclusively by 2033; the full transition by 2035.', source: 'https://media.defense.gov/2022/Sep/07/2003071834/-1/-1/0/CSA_CNSA_2.0_ALGORITHMS_.PDF', milestones: [{ date: '2033-12-31', kind: 'exclusive', what: 'Web servers, browsers and cloud services use CNSA 2.0 algorithms exclusively by 2033 (US national security systems)' }, { date: '2035-12-31', kind: 'complete', what: 'Full CNSA 2.0 transition by 2035 (US national security systems)' }] },
+  { body: 'US NSM-10 (May 2022) and OMB M-23-02 (November 2022)', text: 'US federal goal: mitigate quantum risk as much as feasible by 2035; agencies inventory quantum-vulnerable cryptography every year.', source: 'https://www.whitehouse.gov/wp-content/uploads/2022/11/M-23-02-M-Memo-on-Migrating-to-Post-Quantum-Cryptography.pdf', milestones: [{ date: '2035-12-31', kind: 'complete', what: 'US federal goal: mitigate quantum risk as much as feasible by 2035' }] },
+  { body: 'EU coordinated PQC roadmap (June 2025)', text: 'Member States and operators start the transition by end of 2026; high-risk use cases complete by 2030; as much as feasible by 2035.', source: 'https://digital-strategy.ec.europa.eu/en/library/coordinated-implementation-roadmap-transition-post-quantum-cryptography', milestones: [{ date: '2026-12-31', kind: 'start', what: 'EU: start the transition by end of 2026' }, { date: '2030-12-31', kind: 'complete-high-risk', what: 'EU: high-risk use cases complete by 2030' }, { date: '2035-12-31', kind: 'complete', what: 'EU: as much as feasible by 2035' }] },
 ];
 
 // E4b: one plain status per finding and per endpoint.
@@ -181,6 +181,33 @@ export function migrationPlan(steps, generatedAt, plan = {}) {
     }));
 }
 
+// ---------- AD-068: deadline tracker ----------
+// Only the dates written in DEADLINES (each with its source). "start" milestones (begin the transition) are listed
+// but never counted as the deadline a finding must meet. Distances are measured from the report date.
+const DAY_MS = 86400000;
+export function milestonesFrom(generatedAt) {
+  const t0 = Date.parse(String(generatedAt).slice(0, 10) + 'T00:00:00Z');
+  return DEADLINES.flatMap((d) => (d.milestones || []).map((m) => {
+    const daysAway = Math.round((Date.parse(m.date + 'T00:00:00Z') - t0) / DAY_MS);
+    return { date: m.date, kind: m.kind, what: m.what, body: d.body, source: d.source, daysAway, yearsAway: Math.round((daysAway / 365.25) * 10) / 10, passed: daysAway < 0 };
+  })).sort((a, b) => a.date.localeCompare(b.date) || a.body.localeCompare(b.body));
+}
+const NOW_FINDING = {
+  'QF-WEAK-RSA-SIZE': 'Fix now: these RSA keys are already below today\'s classical minimum; no post-quantum date applies.',
+};
+// The deadline a finding (or plan step) must meet, or null when no published date applies.
+export function deadlineFor(item, milestones) {
+  if (item.id && NOW_FINDING[item.id]) return { kind: 'now', note: NOW_FINDING[item.id] };
+  if (item.key === 'weak-keys') return { kind: 'now', note: NOW_FINDING['QF-WEAK-RSA-SIZE'] };
+  if (item.category === 'protocol-baseline' || item.key === 'legacy-tls') return { kind: 'now', note: 'Fix now: legacy TLS can never negotiate post-quantum key exchange; no post-quantum date applies.' };
+  if (item.key === 'inventory' || (item.category && !['quantum-vulnerable-algorithm', 'key-establishment'].includes(item.category))) return null;
+  const due = milestones.filter((m) => m.kind !== 'start' && !m.passed);
+  if (!due.length) return { kind: 'passed', note: 'Every published date listed in this report has passed.' };
+  const n = due[0];
+  return { kind: 'date', date: n.date, daysAway: n.daysAway, yearsAway: n.yearsAway, body: n.body, what: n.what, source: n.source, alsoDue: due.slice(1).filter((m) => m.date === n.date).map((m) => m.body) };
+}
+const deadlineText = (d) => !d ? '-' : d.kind === 'date' ? `${d.date} (${d.daysAway} days, ${d.yearsAway} years): ${d.what}` : d.note;
+
 // endpoints: [{ target, ok, evidence?, error? }] from verifyTls. scan / migration may be null when only
 // endpoints were checked. organization: the customer's name for the cover.
 export function buildReadinessReport({ organization, scan, migration, endpoints = [], crossCheck = null, coverage = null, now = new Date(), plan = {} }) {
@@ -192,6 +219,7 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
   const cbom = scan ? scanToCbom({ ...scan, generatedAt }, { serialNumber: cbomSerial(generatedAt, scan) }) : null;
   const cbomProblems = cbom ? validateCbom(cbom) : [];
   if (cbomProblems.length) throw new Error('CBOM failed its CycloneDX shape check: ' + cbomProblems.slice(0, 3).join('; '));
+  const milestones = milestonesFrom(generatedAt);
   return {
     schema: REPORT_SCHEMA,
     generatedAt,
@@ -211,14 +239,16 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
       migrationChangesReady: migration ? migration.changeCount : 0,
       endpointsPostQuantum: score.pqEndpoints, endpointsClassicalOnly: score.classicalEndpoints, endpointsUnreachable: score.unreachableEndpoints,
     },
-    roadmap: migrationPlan(roadmap(scan, migration, endpoints), generatedAt, plan),
+    roadmap: migrationPlan(roadmap(scan, migration, endpoints), generatedAt, plan).map((st) => ({ ...st, deadline: deadlineFor(st, milestones) })),
     endpoints: endpoints.map((e) => e.ok
       ? { target: e.target, status: endpointStatus(e), protocol: e.evidence.protocol, keyExchange: e.evidence.ephemeralKey && (e.evidence.ephemeralKey.name || e.evidence.ephemeralKey.type) || 'unknown', certificateSignature: e.evidence.peerSignatureAlgorithm, postQuantumKeyExchange: e.evidence.verdict.pqKeyExchange, postQuantumAuthentication: e.evidence.verdict.pqAuthentication, observedAt: e.evidence.generatedAt }
       : { target: e.target, status: endpointStatus(e), error: String(e.error || 'unreachable').slice(0, 200) }),
-    findings: (scan ? scan.findings : []).slice(0, 500).map((f) => ({ id: f.id, status: findingStatus(f), ...(f.language ? { language: f.language } : {}), severity: f.severity, category: f.category, file: slash(f.file), line: f.line, excerpt: f.excerpt, reason: f.reason, remediation: f.remediation, standard: f.standard, automatable: f.automatable })),
+    findings: (scan ? scan.findings : []).slice(0, 500).map((f) => ({ id: f.id, status: findingStatus(f), ...(f.language ? { language: f.language } : {}), severity: f.severity, category: f.category, file: slash(f.file), line: f.line, excerpt: f.excerpt, reason: f.reason, remediation: f.remediation, standard: f.standard, automatable: f.automatable, deadline: deadlineFor(f, milestones) })),
     cbom,
     cbomFile: cbom ? { name: CBOM_FILE_NAME, format: 'CycloneDX 1.6 CBOM (JSON)', sha256: sha256Hex(cbomFileText(cbom)), components: cbom.components.length } : null,
     deadlines: DEADLINES,
+    // AD-068: every dated milestone from DEADLINES, with its distance from the report date.
+    deadlineTracker: { asOf: generatedAt.slice(0, 10), milestones, rule: 'A finding or plan step is measured against the nearest published deprecation, disallow or completion date listed here that has not passed; dates to start the transition are listed but not counted. Weak keys and legacy TLS are due now. Check the current text of each source.' },
     mappings: MAPPINGS,
     ...(crossCheck ? { crossCheck } : {}),
     method: 'Score = 100 minus: 15 per critical finding (at most 45), 5 per high (at most 35), 2 per medium (at most 10), 10 per endpoint negotiating only classical key exchange (at most 20), 5 per endpoint that could not be reached (at most 10). Stage: Urgent when any critical finding exists; Ready when no critical, high or medium finding remains and every checked endpoint negotiates post-quantum key exchange; In transition when some post-quantum protection exists or supported changes are ready; otherwise Exposed. Findings come from static analysis of the uploaded files; endpoint results are live TLS 1.3 observations at the time shown.',
@@ -283,10 +313,10 @@ code{font:12.5px ui-monospace,Consolas,monospace;word-break:break-all}
 <h2>At a glance</h2><div class="grid">
 <div class="tile"><b>${esc(r.summary.critical)}</b>critical</div><div class="tile"><b>${esc(r.summary.high)}</b>high</div><div class="tile"><b>${esc(r.summary.medium)}</b>medium</div>
 <div class="tile"><b>${esc(r.summary.migrationChangesReady)}</b>changes PQC Forge can generate</div><div class="tile"><b>${esc(r.summary.endpointsPostQuantum)}/${esc(r.scope.endpointsChecked)}</b>endpoints post-quantum</div></div>
-<h2>Migration plan, in order</h2>${r.roadmap.map((st) => `<div class="step" data-step="${esc(st.key || '')}"><div class="when">${st.rank ? '#' + esc(st.rank) + ' · ' : ''}${esc(st.priority)}${st.automated ? ' · PQC Forge can generate this' : ''}</div><b>${esc(st.title)}</b><div>${esc(st.detail)}</div>${st.owner ? '<div class="plan" style="font-size:13px;margin-top:6px">Risk <b>' + esc(st.risk) + '</b> · Owner <b>' + esc(st.owner) + '</b> <span class="muted">(' + esc(st.ownerSource) + ')</span> · Target date <b>' + esc(st.targetDate) + '</b> · Status <b>' + esc(st.status) + '</b></div>' : ''}${st.where.length ? '<div class="muted" style="font-size:13px;margin-top:4px">Where: ' + st.where.slice(0, 12).map((w) => '<code>' + esc(w) + '</code>').join(', ') + (st.where.length > 12 ? ' and ' + (st.where.length - 12) + ' more' : '') + '</div>' : ''}</div>`).join('')}
+<h2>Migration plan, in order</h2>${r.roadmap.map((st) => `<div class="step" data-step="${esc(st.key || '')}"><div class="when">${st.rank ? '#' + esc(st.rank) + ' · ' : ''}${esc(st.priority)}${st.automated ? ' · PQC Forge can generate this' : ''}</div><b>${esc(st.title)}</b><div>${esc(st.detail)}</div>${st.owner ? '<div class="plan" style="font-size:13px;margin-top:6px">Risk <b>' + esc(st.risk) + '</b> · Owner <b>' + esc(st.owner) + '</b> <span class="muted">(' + esc(st.ownerSource) + ')</span> · Target date <b>' + esc(st.targetDate) + '</b> · Status <b>' + esc(st.status) + '</b></div>' : ''}${st.deadline ? '<div class="muted" style="font-size:13px">Deadline: ' + esc(deadlineText(st.deadline)) + '</div>' : ''}${st.where.length ? '<div class="muted" style="font-size:13px;margin-top:4px">Where: ' + st.where.slice(0, 12).map((w) => '<code>' + esc(w) + '</code>').join(', ') + (st.where.length > 12 ? ' and ' + (st.where.length - 12) + ' more' : '') + '</div>' : ''}</div>`).join('')}
 <h2>Live endpoints</h2>${r.endpoints.length ? `<table><tr><th>Endpoint</th><th>Status</th><th>Key exchange</th><th>Certificate signature</th><th>Post-quantum</th></tr>${rows(r.endpoints, [(e) => '<code>' + esc(e.target) + '</code>', (e) => '<b>' + esc(e.status || '') + '</b>', (e) => e.error ? '<span class="muted">' + esc(e.error) + '</span>' : esc(e.keyExchange) + ' (' + esc(e.protocol) + ')', (e) => esc(e.certificateSignature || '-'), (e) => e.error ? 'not reached' : e.postQuantumKeyExchange ? 'yes (key exchange)' + (e.postQuantumAuthentication ? ' and signature' : '') : '<b>no</b>'])}</table>` : '<p class="muted">No endpoints were listed for this report.</p>'}
-<h2>Findings (${esc(r.summary.findings)})</h2>${r.findings.length ? `<table><tr><th>Status</th><th>Severity</th><th>Where</th><th>What</th><th>Fix</th></tr>${rows(r.findings, [(f) => '<b>' + esc(f.status || '') + '</b>' + (f.language ? '<div class="muted">' + esc(f.language) + '</div>' : ''), (f) => sev(f.severity), (f) => '<code>' + esc(f.file) + ':' + esc(f.line) + '</code><div class="muted"><code>' + esc(f.excerpt) + '</code></div>', (f) => esc(f.reason) + ' <span class="muted">(' + esc(f.standard) + ')</span>', (f) => esc(f.remediation) + (f.automatable ? ' <b>PQC Forge can generate this change.</b>' : '')])}</table>` : '<p>No quantum-vulnerable cryptography was found in the scanned files.</p>'}
-<h2>Deadlines to plan against</h2><table><tr><th>Source</th><th>Position</th></tr>${rows(r.deadlines, [(d) => esc(d.body) + (d.source ? '<div class="muted" style="font-size:12px"><code>' + esc(d.source) + '</code></div>' : ''), (d) => esc(d.text)])}</table><p class="muted" style="font-size:13px">Check the current text of each source; positions change as drafts are finalised.</p>
+<h2>Findings (${esc(r.summary.findings)})</h2>${r.findings.length ? `<table><tr><th>Status</th><th>Severity</th><th>Where</th><th>What</th><th>Fix</th><th>Nearest deadline</th></tr>${rows(r.findings, [(f) => '<b>' + esc(f.status || '') + '</b>' + (f.language ? '<div class="muted">' + esc(f.language) + '</div>' : ''), (f) => sev(f.severity), (f) => '<code>' + esc(f.file) + ':' + esc(f.line) + '</code><div class="muted"><code>' + esc(f.excerpt) + '</code></div>', (f) => esc(f.reason) + ' <span class="muted">(' + esc(f.standard) + ')</span>', (f) => esc(f.remediation) + (f.automatable ? ' <b>PQC Forge can generate this change.</b>' : ''), (f) => '<span class="dl">' + esc(deadlineText(f.deadline)) + '</span>'])}</table>` : '<p>No quantum-vulnerable cryptography was found in the scanned files.</p>'}
+<h2>Deadlines to plan against</h2><table><tr><th>Source</th><th>Position</th></tr>${rows(r.deadlines, [(d) => esc(d.body) + (d.source ? '<div class="muted" style="font-size:12px"><code>' + esc(d.source) + '</code></div>' : ''), (d) => esc(d.text)])}</table><p class="muted" style="font-size:13px">Check the current text of each source; positions change as drafts are finalised.</p>${r.deadlineTracker ? '<h2>Deadline tracker (as of ' + esc(r.deadlineTracker.asOf) + ')</h2><table id="deadline-tracker"><tr><th>Date</th><th>Milestone</th><th>Source</th><th>Distance</th></tr>' + rows(r.deadlineTracker.milestones, [(m) => esc(m.date), (m) => esc(m.what) + (m.kind === 'start' ? ' <span class="muted">(start of transition, not counted as a deadline)</span>' : ''), (m) => esc(m.body), (m) => m.passed ? 'passed' : esc(m.daysAway) + ' days (' + esc(m.yearsAway) + ' years)']) + '</table><p class="muted" style="font-size:13px">' + esc(r.deadlineTracker.rule) + '</p>' : ''}
 <h2>Where this report is evidence</h2><table><tr><th>Framework</th><th>Requirement</th><th>What it asks</th></tr>${rows(r.mappings, [(m) => esc(m.framework), (m) => esc(m.control), (m) => esc(m.text)])}</table>
 <h2>Scope and method</h2><p>${esc(r.scope.note)}</p>${r.scope.languages ? '<p><b>Languages read:</b> ' + r.scope.languages.map(esc).join(', ') + '.<br><b>Configuration read:</b> ' + r.scope.configs.map(esc).join('; ') + '.</p><p><b>Not covered by this scan:</b></p><ul>' + r.scope.notCovered.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>' : ''}<p class="muted">${esc(r.method)}</p><p class="muted">The full cryptographic bill of materials (CycloneDX 1.6 CBOM) is inside the signed JSON version of this report and in cbom.json.</p>${r.cbomFile ? '<p class="muted" id="cbom-file">CBOM file: <code>' + esc(r.cbomFile.name) + '</code>, ' + esc(r.cbomFile.components) + ' cryptographic asset(s), SHA-256 <code>' + esc(r.cbomFile.sha256) + '</code>. That fingerprint is inside the signed report, so a changed CBOM file no longer matches it.</p>' : ''}
 ${r.crossCheck ? crossCheckHtml(r.crossCheck) : ''}
