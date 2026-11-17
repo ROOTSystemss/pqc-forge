@@ -69,6 +69,16 @@ export function scoreReadiness(scan, endpoints) {
   const unreachable = endpoints.filter((e) => !e.ok).length;
   const penalty = Math.min(45, s.critical * 15) + Math.min(35, s.high * 5) + Math.min(10, s.medium * 2) + Math.min(20, classical * 10) + Math.min(10, unreachable * 5);
   const score = Math.max(0, 100 - penalty);
+  // AD-063: the one number, explained. Every deduction that applied, with its count, the points per item, the cap
+  // and the points actually taken, so a reader can recompute the score from the signed report itself.
+  const part = (key, reason, count, each, cap) => ({ key, reason, count, pointsEach: each, cap, points: Math.min(cap, count * each) });
+  const breakdown = [
+    part('critical', 'Critical findings', s.critical, 15, 45),
+    part('high', 'High findings', s.high, 5, 35),
+    part('medium', 'Medium findings', s.medium, 2, 10),
+    part('classical-endpoints', 'Endpoints negotiating only classical key exchange', classical, 10, 20),
+    part('unreachable-endpoints', 'Endpoints that could not be reached (not verified)', unreachable, 5, 10),
+  ].filter((p) => p.count > 0);
   const pqEndpoints = endpoints.filter((e) => e.ok && e.evidence.verdict.pqKeyExchange).length;
   // BM-05 three-state: an observed weakness decides the stage; otherwise anything unchecked (unreachable endpoint,
   // unreadable file, nothing scanned at all) gives "unverified" - never "ready", and never "exposed" without evidence.
@@ -81,7 +91,7 @@ export function scoreReadiness(scan, endpoints) {
   else if (clean && (nothingChecked || unreachable > 0 || unreadableFiles > 0)) stage = 'unverified';
   else if (clean) stage = 'ready';
   else if (pqEndpoints > 0 || s.automatable > 0) stage = 'transition';
-  return { score, stage: STAGES.find((x) => x.id === stage), classicalEndpoints: classical, pqEndpoints, unreachableEndpoints: unreachable, unreadableFiles };
+  return { score, breakdown, stage: STAGES.find((x) => x.id === stage), classicalEndpoints: classical, pqEndpoints, unreachableEndpoints: unreachable, unreadableFiles };
 }
 
 // Fix-first plan: each step says what, where, and whether PQC Forge can generate the change.
@@ -281,7 +291,7 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
       ...(coverage ? { languages: coverage.languages, configs: coverage.configs, notCovered: coverage.notCovered } : {}),
       endpoints: endpoints.map((e) => e.target),
     },
-    readiness: { score: score.score, stage: score.stage.id, stageLabel: score.stage.label, stageSummary: score.stage.summary },
+    readiness: { score: score.score, stage: score.stage.id, stageLabel: score.stage.label, stageSummary: score.stage.summary, breakdown: score.breakdown },
     summary: {
       findings: s ? s.total : 0, critical: s ? s.critical : 0, high: s ? s.high : 0, medium: s ? s.medium : 0, low: s ? s.low : 0,
       automatable: s ? s.automatable : 0, suppressed: s ? s.suppressed : 0, byCategory,
@@ -363,6 +373,7 @@ code{font:12.5px ui-monospace,Consolas,monospace;word-break:break-all}
 <header><div class="brand">PQC Forge · RootSystems</div><h1>Post-quantum readiness report</h1>
 <div class="muted">${esc(r.organization)} · generated ${esc(r.generatedAt.slice(0, 10))} · ${esc(r.scope.filesScanned)} files scanned · ${esc(r.scope.endpointsChecked)} endpoint(s) checked</div></header>
 <div class="stage"><div class="score">${r.readiness.stage === 'unverified' ? '&ndash;' : esc(r.readiness.score)}</div><div><div class="lbl">${esc(r.readiness.stageLabel)}</div><div>${esc(r.readiness.stageSummary)}</div></div></div>
+<div id="score-explained"><b>How the score was reached:</b> 100${(r.readiness.breakdown || []).map((p) => ' &minus; ' + esc(p.points) + ' (' + esc(p.count) + ' &times; ' + esc(p.reason.toLowerCase()) + ', ' + esc(p.pointsEach) + ' each, at most ' + esc(p.cap) + ')').join('')} = ${esc(r.readiness.score)}.${(r.readiness.breakdown || []).length ? '' : ' No deduction applied.'}${r.readiness.stage === 'unverified' ? ' The stage is Not verified, so the number is not shown as a result: something could not be checked.' : ''}</div>
 <h2>At a glance</h2><div class="grid">
 <div class="tile"><b>${esc(r.summary.critical)}</b>critical</div><div class="tile"><b>${esc(r.summary.high)}</b>high</div><div class="tile"><b>${esc(r.summary.medium)}</b>medium</div>
 <div class="tile"><b>${esc(r.summary.migrationChangesReady)}</b>changes PQC Forge can generate</div><div class="tile"><b>${esc(r.summary.endpointsPostQuantum)}/${esc(r.scope.endpointsChecked)}</b>endpoints post-quantum</div></div>
