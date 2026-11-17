@@ -21,7 +21,7 @@ import { tenantJobsDirectory, tenantWorkspacesDirectory } from './tenants.js';
 import { resolveWorkspacePath } from './workspace.js';
 import { listDocDirs, readDoc, writeDoc } from './docStore.js';
 import { HOST_EXECUTION_JOB_TYPES, resolvePublicTarget, safetyOptionsFromEnv } from './hosted-safety.js';
-import { buildReadinessReport, signReport, renderReportHtml } from '../readinessReport.js';
+import { buildReadinessReport, signReport, renderReportHtml, cbomFileText, CBOM_FILE_NAME } from '../readinessReport.js';
 
 const JOB_SCHEMA = 'pqc-forge.job/v1';
 const TERMINAL_STATES = new Set(['succeeded', 'failed']);
@@ -37,7 +37,7 @@ const DEFAULT_DOCKER_CONCURRENCY = Number(process.env.PQC_FORGE_API_MAX_DOCKER_C
 const DOCKER_JOB_TYPES = new Set(['protocol-lab']);
 const MAX_REPORT_ENDPOINTS = 10;
 // Files a job may hand back for download (GET /v1/jobs/:id/files/:name), by exact name only.
-export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8' };
+export const DOWNLOADABLE_JOB_FILES = { 'readiness-report.html': 'text/html; charset=utf-8', 'readiness-report.json': 'application/json; charset=utf-8', 'cbom.json': 'application/vnd.cyclonedx+json; charset=utf-8' };
 
 // Every jobId this module ever generates (submit(), below) matches this
 // exact format. Enforcing it here — the same way tenants.js and
@@ -201,7 +201,9 @@ const HANDLERS = {
     if (!(await useReportCredit(apiHome, tenantId))) throw new Error('No readiness report credit left. Buy one from the Billing tab.');
     await fs.writeFile(path.join(jobDir, 'readiness-report.json'), JSON.stringify(signed, null, 2), 'utf8');
     await fs.writeFile(path.join(jobDir, 'readiness-report.html'), renderReportHtml(signed), 'utf8');
-    return { schema: 'pqc-forge.readiness-report-job/v1', readiness: signed.readiness, summary: signed.summary, roadmap: signed.roadmap.map((s) => ({ priority: s.priority, title: s.title })), files: ['readiness-report.html', 'readiness-report.json'], receiptDigest: signed.receiptDigest };
+    // AD-062: the CBOM as its own file; its SHA-256 is inside the signed report (cbomFile.sha256).
+    if (signed.cbom) await fs.writeFile(path.join(jobDir, CBOM_FILE_NAME), cbomFileText(signed.cbom), 'utf8');
+    return { schema: 'pqc-forge.readiness-report-job/v1', readiness: signed.readiness, summary: signed.summary, roadmap: signed.roadmap.map((s) => ({ priority: s.priority, title: s.title })), files: ['readiness-report.html', 'readiness-report.json', ...(signed.cbom ? [CBOM_FILE_NAME] : [])], receiptDigest: signed.receiptDigest };
   },
 
   async breaklab({ params, signingKey }) {

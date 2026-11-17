@@ -27,7 +27,7 @@ export const DEADLINES = [
 
 // E4b: one plain status per finding and per endpoint.
 export const STATUS = {
-  vulnerable: 'Quantum-vulnerable', transitional: 'Transitional', deprecated: 'Deprecated (TLS 1.0-1.1)', unsafe: 'Unsafe (SSL)', safe: 'Quantum-safe',
+  vulnerable: 'Quantum-vulnerable', transitional: 'Transitional', deprecated: 'Deprecated (TLS 1.0-1.1)', unsafe: 'Unsafe (SSL)', safe: 'Post-quantum ready', // was 'Quantum-safe' (never-say wording, knock-out 2026-11-17)
 };
 const TRANSITIONAL_IDS = new Set(['QF-HAPROXY-MISSING-GROUP-POLICY', 'QF-APACHE-MISSING-GROUP-POLICY', 'QF-ENVOY-MISSING-GROUP-POLICY', 'QF-SSH-CLASSICAL-HOSTKEY']);
 export function findingStatus(f) {
@@ -95,6 +95,46 @@ export function roadmap(scan, migration, endpoints) {
   return steps;
 }
 
+// ---------- AD-062: the CBOM as a standalone file, covered by the report's signature ----------
+// The same CycloneDX 1.6 document that is embedded in the report is also handed out as its own file
+// (cbom.json). Its exact bytes are cbomFileText(cbom); their SHA-256 is written into the signed report
+// (cbomFile.sha256), so a changed cbom.json no longer matches a valid signature.
+export const CBOM_FILE_NAME = 'cbom.json';
+export const cbomFileText = (cbom) => JSON.stringify(cbom, null, 2) + '\n';
+const sha256Hex = (text) => createHash('sha256').update(text).digest('hex');
+
+// Same inputs, same serial number: a report can be rebuilt byte for byte (the CBOM used to get a random one).
+function cbomSerial(generatedAt, scan) {
+  const h = sha256Hex(canonicalJson({ generatedAt, findings: scan.findings.map((f) => [f.id, slash(f.file), f.line]) }));
+  return `urn:uuid:${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h[16], 16) & 3) | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+// Shape check against the CycloneDX 1.6 fields PQC Forge emits (see cbom.js). Returns a list of problems.
+export function validateCbom(cbom) {
+  const errors = [];
+  if (!cbom || typeof cbom !== 'object') return ['not a CBOM object'];
+  if (cbom.bomFormat !== 'CycloneDX') errors.push('bomFormat must be CycloneDX');
+  if (cbom.specVersion !== '1.6') errors.push('specVersion must be 1.6');
+  if (!/^urn:uuid:[0-9a-f-]{36}$/.test(String(cbom.serialNumber))) errors.push('serialNumber must be a urn:uuid');
+  if (!Array.isArray(cbom.components)) errors.push('components must be a list');
+  const refs = new Set();
+  for (const c of cbom.components || []) {
+    if (c.type !== 'cryptographic-asset') errors.push(`component ${c['bom-ref']}: type must be cryptographic-asset`);
+    if (!c['bom-ref']) errors.push('component without bom-ref');
+    refs.add(c['bom-ref']);
+    const cp = c.cryptoProperties;
+    if (!cp || !['algorithm', 'protocol', 'certificate', 'related-crypto-material'].includes(cp.assetType)) errors.push(`component ${c['bom-ref']}: cryptoProperties.assetType missing or unknown`);
+    else if (cp.assetType === 'algorithm' && !(cp.algorithmProperties && cp.algorithmProperties.primitive)) errors.push(`component ${c['bom-ref']}: algorithmProperties.primitive missing`);
+  }
+  for (const v of cbom.vulnerabilities || []) for (const a of v.affects || []) if (!refs.has(a.ref)) errors.push(`vulnerability ${v['bom-ref']}: affects unknown ref ${a.ref}`);
+  return errors;
+}
+
+// True when cbomText is exactly the CBOM file the signed report names (verify the report itself first).
+export function cbomFileMatches(signedReport, cbomText) {
+  return !!(signedReport && signedReport.cbomFile && typeof cbomText === 'string' && sha256Hex(cbomText) === signedReport.cbomFile.sha256);
+}
+
 // endpoints: [{ target, ok, evidence?, error? }] from verifyTls. scan / migration may be null when only
 // endpoints were checked. organization: the customer's name for the cover.
 export function buildReadinessReport({ organization, scan, migration, endpoints = [], crossCheck = null, coverage = null, now = new Date() }) {
@@ -102,9 +142,13 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
   const s = scan ? scan.summary : null;
   const byCategory = {};
   for (const f of scan ? scan.findings : []) byCategory[f.category] = (byCategory[f.category] || 0) + 1;
+  const generatedAt = new Date(now).toISOString();
+  const cbom = scan ? scanToCbom({ ...scan, generatedAt }, { serialNumber: cbomSerial(generatedAt, scan) }) : null;
+  const cbomProblems = cbom ? validateCbom(cbom) : [];
+  if (cbomProblems.length) throw new Error('CBOM failed its CycloneDX shape check: ' + cbomProblems.slice(0, 3).join('; '));
   return {
     schema: REPORT_SCHEMA,
-    generatedAt: new Date(now).toISOString(),
+    generatedAt,
     organization: String(organization || 'Your organization').slice(0, 120),
     scope: {
       filesScanned: scan ? scan.filesScanned : 0,
@@ -126,7 +170,8 @@ export function buildReadinessReport({ organization, scan, migration, endpoints 
       ? { target: e.target, status: endpointStatus(e), protocol: e.evidence.protocol, keyExchange: e.evidence.ephemeralKey && (e.evidence.ephemeralKey.name || e.evidence.ephemeralKey.type) || 'unknown', certificateSignature: e.evidence.peerSignatureAlgorithm, postQuantumKeyExchange: e.evidence.verdict.pqKeyExchange, postQuantumAuthentication: e.evidence.verdict.pqAuthentication, observedAt: e.evidence.generatedAt }
       : { target: e.target, status: endpointStatus(e), error: String(e.error || 'unreachable').slice(0, 200) }),
     findings: (scan ? scan.findings : []).slice(0, 500).map((f) => ({ id: f.id, status: findingStatus(f), ...(f.language ? { language: f.language } : {}), severity: f.severity, category: f.category, file: slash(f.file), line: f.line, excerpt: f.excerpt, reason: f.reason, remediation: f.remediation, standard: f.standard, automatable: f.automatable })),
-    cbom: scan ? scanToCbom(scan) : null,
+    cbom,
+    cbomFile: cbom ? { name: CBOM_FILE_NAME, format: 'CycloneDX 1.6 CBOM (JSON)', sha256: sha256Hex(cbomFileText(cbom)), components: cbom.components.length } : null,
     deadlines: DEADLINES,
     mappings: MAPPINGS,
     ...(crossCheck ? { crossCheck } : {}),
@@ -197,7 +242,7 @@ code{font:12.5px ui-monospace,Consolas,monospace;word-break:break-all}
 <h2>Findings (${esc(r.summary.findings)})</h2>${r.findings.length ? `<table><tr><th>Status</th><th>Severity</th><th>Where</th><th>What</th><th>Fix</th></tr>${rows(r.findings, [(f) => '<b>' + esc(f.status || '') + '</b>' + (f.language ? '<div class="muted">' + esc(f.language) + '</div>' : ''), (f) => sev(f.severity), (f) => '<code>' + esc(f.file) + ':' + esc(f.line) + '</code><div class="muted"><code>' + esc(f.excerpt) + '</code></div>', (f) => esc(f.reason) + ' <span class="muted">(' + esc(f.standard) + ')</span>', (f) => esc(f.remediation) + (f.automatable ? ' <b>PQC Forge can generate this change.</b>' : '')])}</table>` : '<p>No quantum-vulnerable cryptography was found in the scanned files.</p>'}
 <h2>Deadlines to plan against</h2><table><tr><th>Source</th><th>Position</th></tr>${rows(r.deadlines, [(d) => esc(d.body) + (d.source ? '<div class="muted" style="font-size:12px"><code>' + esc(d.source) + '</code></div>' : ''), (d) => esc(d.text)])}</table><p class="muted" style="font-size:13px">Check the current text of each source; positions change as drafts are finalised.</p>
 <h2>Where this report is evidence</h2><table><tr><th>Framework</th><th>Requirement</th><th>What it asks</th></tr>${rows(r.mappings, [(m) => esc(m.framework), (m) => esc(m.control), (m) => esc(m.text)])}</table>
-<h2>Scope and method</h2><p>${esc(r.scope.note)}</p>${r.scope.languages ? '<p><b>Languages read:</b> ' + r.scope.languages.map(esc).join(', ') + '.<br><b>Configuration read:</b> ' + r.scope.configs.map(esc).join('; ') + '.</p><p><b>Not covered by this scan:</b></p><ul>' + r.scope.notCovered.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>' : ''}<p class="muted">${esc(r.method)}</p><p class="muted">The full cryptographic bill of materials (CycloneDX 1.6 CBOM) is inside the signed JSON version of this report and in cbom.json.</p>
+<h2>Scope and method</h2><p>${esc(r.scope.note)}</p>${r.scope.languages ? '<p><b>Languages read:</b> ' + r.scope.languages.map(esc).join(', ') + '.<br><b>Configuration read:</b> ' + r.scope.configs.map(esc).join('; ') + '.</p><p><b>Not covered by this scan:</b></p><ul>' + r.scope.notCovered.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>' : ''}<p class="muted">${esc(r.method)}</p><p class="muted">The full cryptographic bill of materials (CycloneDX 1.6 CBOM) is inside the signed JSON version of this report and in cbom.json.</p>${r.cbomFile ? '<p class="muted" id="cbom-file">CBOM file: <code>' + esc(r.cbomFile.name) + '</code>, ' + esc(r.cbomFile.components) + ' cryptographic asset(s), SHA-256 <code>' + esc(r.cbomFile.sha256) + '</code>. That fingerprint is inside the signed report, so a changed CBOM file no longer matches it.</p>' : ''}
 ${r.crossCheck ? crossCheckHtml(r.crossCheck) : ''}
 <div class="foot">Signed with ${esc(doc.signature ? doc.signature.algorithm : 'ML-DSA-65')} (FIPS 204), key <code>${esc(doc.signature ? doc.signature.keyId : '')}</code>. Anyone can check the JSON version has not been changed: <code>pqc-forge verify-receipt report.json</code> or the Verify Receipt page. PQC Forge does not implement cryptographic primitives and this report is not legal advice.</div>
 </div></body></html>`;

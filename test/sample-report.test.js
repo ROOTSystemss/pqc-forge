@@ -46,6 +46,16 @@ test('public sample readiness report: no account, signed, marked SAMPLE, verifie
     assert.equal(ok.body.sample, true, 'verification says SAMPLE');
     assert.equal((await verify({ report: doc })).body.valid, true, '{ report } wrapper accepted');
 
+    // AD-062: the sample's CBOM file is public too, and it is the one the signed sample names.
+    const cb = await fetch(`${base}/v1/sample/readiness-report.cbom.json`);
+    assert.equal(cb.status, 200);
+    assert.match(cb.headers.get('content-type') || '', /cyclonedx\+json/);
+    const cbomText = await cb.text();
+    const withCbom = await fetch(`${base}/v1/public/verify-report`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ report: doc, cbom: cbomText }) });
+    assert.equal((await withCbom.json()).cbomMatches, true, 'sample CBOM matches the signed sample');
+    const badCbom = await fetch(`${base}/v1/public/verify-report`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ report: doc, cbom: cbomText.replace('CycloneDX', 'CycloneDY') }) });
+    assert.equal((await badCbom.json()).cbomMatches, false, 'a changed CBOM does not match');
+
     const tampered = { ...doc, organization: doc.organization.replace('SAMPLE', 'SAMPLF') };
     const bad = await verify(tampered);
     assert.equal(bad.body.valid, false, 'one character changed fails');

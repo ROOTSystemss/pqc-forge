@@ -354,16 +354,16 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     {
       // Public SAMPLE readiness report (made-up code, signed with this server's key, sample: true inside the
       // signed body). No account needed; nothing stored. Knock-out 2026-11-16, O-24.
-      method: 'GET', pattern: /^\/v1\/sample\/readiness-report\.(json|html)$/, public: true,
+      method: 'GET', pattern: /^\/v1\/sample\/readiness-report\.(json|html|cbom\.json)$/, public: true,
       handler: async (req, res, [format]) => {
         const sample = await sampleReadinessReport(await resolveSigningKey());
         res.writeHead(200, {
-          'content-type': format === 'json' ? 'application/json; charset=utf-8' : 'text/html; charset=utf-8',
-          'content-disposition': `${format === 'json' ? 'attachment' : 'inline'}; filename="SAMPLE-pqc-readiness-report.${format}"`,
+          'content-type': format === 'json' ? 'application/json; charset=utf-8' : format === 'cbom.json' ? 'application/vnd.cyclonedx+json; charset=utf-8' : 'text/html; charset=utf-8',
+          'content-disposition': `${format === 'html' ? 'inline' : 'attachment'}; filename="SAMPLE-pqc-readiness-report.${format}"`,
           'cache-control': 'public, max-age=300', 'x-robots-tag': 'noindex',
           ...(format === 'html' ? { 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:" } : {}),
         });
-        res.end(format === 'json' ? sample.json : sample.html);
+        res.end(format === 'json' ? sample.json : format === 'cbom.json' ? sample.cbom : sample.html);
         return null;
       }
     },
@@ -376,7 +376,8 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         try { body = JSON.parse(Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw)); } catch { throw new HttpError(400, 'The body is not valid JSON.'); }
         const doc = body && (body.report || body);
         if (!doc || typeof doc !== 'object') throw new HttpError(400, 'Send the signed readiness report JSON (or { "report": ... }).');
-        return publicVerifyReport(doc, keyHistory(await resolveSigningKey()).keys);
+        // Optional { report, cbom }: cbom is the CBOM file's exact text; the answer says whether it is the one the report names.
+        return publicVerifyReport(doc, keyHistory(await resolveSigningKey()).keys, { cbomText: body && body.report && typeof body.cbom === 'string' ? body.cbom : null });
       }
     },
     {

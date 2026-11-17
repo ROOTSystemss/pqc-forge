@@ -82,7 +82,7 @@ test('E4b: status labels for findings and endpoints', () => {
   assert.equal(findingStatus({ id: 'QF-TLS-LEGACY', category: 'protocol-baseline' }), 'Deprecated (TLS 1.0-1.1)');
   assert.equal(findingStatus({ id: 'QF-SSL-PROTOCOL', category: 'protocol-baseline' }), 'Unsafe (SSL)');
   assert.equal(findingStatus({ id: 'QF-SSH-CLASSICAL-HOSTKEY', category: 'quantum-vulnerable-algorithm' }), 'Transitional');
-  assert.equal(endpointStatus({ ok: true, evidence: { protocol: 'TLSv1.3', verdict: { pqKeyExchange: true, pqAuthentication: true } } }), 'Quantum-safe');
+  assert.equal(endpointStatus({ ok: true, evidence: { protocol: 'TLSv1.3', verdict: { pqKeyExchange: true, pqAuthentication: true } } }), 'Post-quantum ready');
   assert.equal(endpointStatus({ ok: true, evidence: { protocol: 'TLSv1.1', verdict: { pqKeyExchange: false } } }), 'Deprecated (TLS 1.0-1.1)');
   assert.equal(endpointStatus({ ok: true, evidence: { protocol: 'TLSv1.3', verdict: { pqKeyExchange: false } } }), 'Quantum-vulnerable');
 });

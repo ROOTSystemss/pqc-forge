@@ -120,7 +120,7 @@ function vulnerabilityFor(finding, bomRef, { analysisState, analysisDetail } = {
  *    recorded in `analysis.detail`, since an audited exception is a
  *    documented, time-boxed decision not to act yet — not a false positive.
  */
-export function scanToCbom(report) {
+export function scanToCbom(report, { serialNumber } = {}) {
   const components = [];
   const vulnerabilities = [];
   const delta = report.delta;
@@ -155,7 +155,7 @@ export function scanToCbom(report) {
   return {
     bomFormat: 'CycloneDX',
     specVersion: '1.6',
-    serialNumber: `urn:uuid:${randomUUID()}`,
+    serialNumber: serialNumber || `urn:uuid:${randomUUID()}`,
     version: 1,
     metadata: {
       timestamp: report.generatedAt ?? new Date().toISOString(),

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scanRepository } from './scanner.js';
 import { migrateRepository } from './migrator.js';
-import { buildReadinessReport, signReport, verifyReport, renderReportHtml } from './readinessReport.js';
+import { buildReadinessReport, signReport, verifyReport, renderReportHtml, cbomFileText, cbomFileMatches } from './readinessReport.js';
 
 const SAMPLE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'samples', 'readiness-sample');
 export const SAMPLE_NOTICE = 'SAMPLE REPORT. Made-up code and organization; no real company was assessed and this is not evidence about anyone.';
@@ -20,13 +20,13 @@ export async function sampleReadinessReport(signingKey) {
   const migration = await migrateRepository(SAMPLE_ROOT, { write: false });
   const report = buildReadinessReport({ organization: 'SAMPLE Co (made-up example)', scan, migration, endpoints: [], now: SAMPLE_DATE });
   const signed = signReport({ ...report, sample: true, sampleNotice: SAMPLE_NOTICE }, signingKey);
-  const out = { json: JSON.stringify(signed, null, 2), html: renderReportHtml(signed), receiptDigest: signed.receiptDigest };
+  const out = { json: JSON.stringify(signed, null, 2), html: renderReportHtml(signed), cbom: cbomFileText(signed.cbom), receiptDigest: signed.receiptDigest };
   cache.set(id, out);
   return out;
 }
 
 // Public check: only readiness reports, only keys this server published. Says whether it is a SAMPLE.
-export function publicVerifyReport(doc, publishedKeys) {
+export function publicVerifyReport(doc, publishedKeys, { cbomText = null } = {}) {
   const r = verifyReport(doc, publishedKeys);
   return {
     valid: r.valid === true,
@@ -35,6 +35,8 @@ export function publicVerifyReport(doc, publishedKeys) {
     organization: r.valid === true ? doc.organization : null,
     generatedAt: r.valid === true ? doc.generatedAt : null,
     receiptDigest: r.valid === true ? doc.receiptDigest : null,
+    // AD-062: when the CBOM file is sent too, whether it is exactly the one this (valid) report names.
+    ...(cbomText !== null ? { cbomMatches: r.valid === true && cbomFileMatches(doc, cbomText) } : {}),
     note: 'Valid means: signed by this PQC Forge server (a key it publishes at /.well-known/rootsystems-signing-keys.json) and unchanged since. It does not prove the scanned code is the code you run.',
   };
 }
