@@ -482,7 +482,7 @@ test('CORS headers allow a browser dashboard to call the API from another origin
   }
 });
 
-test('the built dashboard is served from the same origin, with SPA fallback, and never shadows the /v1 API', async () => {
+test('the built dashboard is served from the same origin (unknown paths 404, QA 2026-11-18 F11), with page headers, and never shadows the /v1 API', async () => {
   const webDistPath = await fs.mkdtemp(path.join(os.tmpdir(), 'pqc-forge-web-dist-'));
   await fs.writeFile(path.join(webDistPath, 'index.html'), '<!doctype html><title>PQC Forge</title>');
   await fs.mkdir(path.join(webDistPath, 'assets'), { recursive: true });
@@ -502,11 +502,22 @@ test('the built dashboard is served from the same origin, with SPA fallback, and
     assert.match(asset.headers.get('content-type') ?? '', /javascript/);
     assert.match(await asset.text(), /console\.log/);
 
-    // A client-side route with no matching file falls back to index.html
-    // so a hard refresh on a deep link still loads the app shell.
-    const deepLink = await fetch(`${base}/jobs/j_deadbeefdeadbeef`);
-    assert.equal(deepLink.status, 200);
-    assert.match(await deepLink.text(), /PQC Forge/);
+    // QA 2026-11-18 F11: the dashboard routes with ?tab= on "/" only, so an unknown path is a real 404 (it used to
+    // answer 200 with the dashboard for every address, /.env and /.git/config included).
+    for (const p of ['/jobs/j_deadbeefdeadbeef', '/this-page-does-not-exist', '/.env', '/.git/config', '/assets/.hidden']) {
+      const r = await fetch(`${base}${p}`);
+      assert.equal(r.status, 404, p);
+      assert.doesNotMatch(await r.text(), /PQC Forge/, p);
+    }
+    const index = await fetch(`${base}/index.html`);
+    assert.equal(index.status, 200);
+    // F12: dashboard pages carry HSTS, no framing and a CSP that loads scripts only from this origin.
+    for (const r of [root, index]) {
+      assert.match(r.headers.get('strict-transport-security') ?? '', /max-age=31536000/);
+      assert.equal(r.headers.get('x-frame-options'), 'DENY');
+      assert.match(r.headers.get('content-security-policy') ?? '', /script-src 'self';/);
+      assert.match(r.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/);
+    }
 
     // Static serving must never shadow the real API: an unauthenticated
     // /v1/ request still gets the API's own 401, not the app shell.

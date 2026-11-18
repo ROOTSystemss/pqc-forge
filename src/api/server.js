@@ -80,13 +80,24 @@ class HttpError extends Error {
 }
 
 /** Accept https production URLs and local http for mock/dev return after checkout. */
-function resolveReturnUrl(requested, billingEnv) {
+// QA 2026-11-18 F16: the buyer is sent back only to this service's own address (PQC_FORGE_PUBLIC_URL), the
+// RootSystems site, or a local address (demo); any other https address (e.g. https://evil.example/steal) is ignored
+// and the default is used.
+function resolveReturnUrl(requested, billingEnv, requestOrigin = null) {
+  const fallback = billingEnv.PQC_FORGE_PUBLIC_URL || '';
   if (typeof requested === 'string') {
     const trimmed = requested.trim();
-    if (/^https:\/\/[^\s"'<>]+$/i.test(trimmed)) return trimmed;
-    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(trimmed)) return trimmed;
+    let u = null;
+    try { u = /^[\s"'<>]*$/.test(trimmed) ? null : new URL(trimmed); } catch { u = null; }
+    if (u && !/[\s"'<>]/.test(trimmed)) {
+      let own = null;
+      try { own = fallback ? new URL(fallback).origin : null; } catch { own = null; }
+      let here = null;
+      try { here = requestOrigin ? new URL(requestOrigin).origin : null; } catch { here = null; }
+      if (u.protocol === 'https:' && (u.origin === own || u.origin === here || u.hostname === 'rootsystems.app')) return trimmed;
+      if (u.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/i.test(u.hostname)) return trimmed;
+    }
   }
-  const fallback = billingEnv.PQC_FORGE_PUBLIC_URL || '';
   if (/^https:\/\//i.test(fallback) || /^http:\/\/(localhost|127\.0\.0\.1)/i.test(fallback)) return fallback;
   return 'https://rootsystems.app/pricing';
 }
@@ -159,12 +170,6 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
     {
       method: 'POST', pattern: /^\/v1\/signup$/, public: true, status: 201,
       handler: async (req, res, params, body) => {
-        // Abuse limit (abuseLimits.js): per client address an hour, and for the whole server a day.
-        const slot = signupLimiter.take(clientAddress(req));
-        if (!slot.ok) {
-          res.setHeader('Retry-After', String(slot.retryAfterSeconds));
-        throw new HttpError(429, slot.reason === 'server' ? 'Too many new accounts today. Try again tomorrow, or contact RootSystems.' : 'Too many new accounts from this address. Try again in an hour.');
-        }
         const name = typeof body.name === 'string' ? body.name.trim() : '';
         if (name.length < 2 || name.length > SIGNUP_NAME_MAX) {
           throw new HttpError(400, `Provide a name between 2 and ${SIGNUP_NAME_MAX} characters.`);
@@ -175,6 +180,13 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         const email = typeof body.email === 'string' ? body.email.trim().slice(0, 160) : '';
         if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           throw new HttpError(400, 'Email does not look valid.');
+        }
+        // Abuse limit (abuseLimits.js): per client address an hour, and for the whole server a day. QA 2026-11-18 F14:
+        // taken only for a valid request, so someone who mistypes a few times is not locked out for an hour.
+        const slot = signupLimiter.take(clientAddress(req));
+        if (!slot.ok) {
+          res.setHeader('Retry-After', String(slot.retryAfterSeconds));
+          throw new HttpError(429, slot.reason === 'server' ? 'Too many new accounts today. Try again tomorrow, or contact RootSystems.' : 'Too many new accounts from this address. Try again in an hour.');
         }
         await fs.mkdir(apiHome, { recursive: true });
         const created = await createTenant(apiHome, { name, email: email || undefined });
@@ -203,7 +215,10 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         try {
           result = await createWorkspace(apiHome, tenant.tenantId, body.files);
         } catch (error) {
-          throw new HttpError(400, error.message);
+          // QA 2026-11-18 F15: a file-system error (ENOENT, EINVAL, ...) carries the server's folder path in its message;
+          // answer with a plain message instead. Our own validation messages (no error.code) are shown as they are.
+          if (error && error.code) throw new HttpError(400, 'A file could not be saved (' + String(error.code).slice(0, 20) + '). Use plain file names: letters, numbers, spaces, and - _ . / only.');
+          throw new HttpError(400, String(error.message).split(apiHome).join('<server>'));
         }
         return { workspaceId: result.workspaceId, files: result.files, totalBytes: result.totalBytes };
       }
@@ -390,7 +405,7 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
         if (!country) throw new HttpError(400, 'Choose the country you are buying from (two-letter code, e.g. "US").');
         if (isBlockedCountry(country, billingEnv)) throw new HttpError(451, 'PQC Forge is cryptographic software and cannot be sold to buyers in this country under export-control and sanctions rules.');
         const quantity = Math.min(500, Math.max(1, Number.parseInt(body.quantity ?? 1, 10) || 1));
-        const returnUrl = resolveReturnUrl(body.returnUrl, billingEnv);
+        const returnUrl = resolveReturnUrl(body.returnUrl, billingEnv, req.headers.host ? 'https://' + String(req.headers.host).slice(0, 200) : null);
         let checkout;
         try {
           checkout = await provider.createCheckout({ tenantId: tenant.tenantId, item, quantity, returnUrl });
@@ -515,7 +530,17 @@ export function createApiServer({ apiHome, signingKeyPath = null, globalConcurre
           const file = await resolveStaticFile(resolvedWebDist, url.pathname);
           if (file) {
             const data = await fs.readFile(file);
-            res.writeHead(200, { 'content-type': CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream' });
+            const type = CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+            // QA 2026-11-18 F12: the dashboard holds the API key in the browser, so its pages get HSTS, no framing and a
+            // CSP that loads code only from this origin (the built dashboard has no inline scripts; inline styles allowed).
+            // connect-src stays open to https and local hosts: the Connect panel lets a customer point the dashboard at
+            // another PQC Forge API (self-hosted or local).
+            if (type.startsWith('text/html')) {
+              res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+              res.setHeader('X-Frame-Options', 'DENY');
+              res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+            }
+            res.writeHead(200, { 'content-type': type });
             res.end(data);
             return;
           }

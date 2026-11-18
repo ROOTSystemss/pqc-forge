@@ -26,24 +26,22 @@ export const CONTENT_TYPES = {
  * application assets, not tenant data, so it carries no auth of its own;
  * the API routes it sits alongside still require a bearer key.
  *
- * Unknown paths fall back to `index.html` so the dashboard's client-side
- * routing survives a hard refresh on a deep link. Returns null only when
- * the request tries to escape `root` or `root` has no `index.html` at all
- * (i.e. no build was ever produced).
+ * QA 2026-11-18 F11: unknown paths are NOT answered with the dashboard any more (every address, including /.env and
+ * /.git/config, used to return 200 + index.html, so crawlers and uptime checks saw them as real pages). The dashboard
+ * routes with query parameters on "/" only (?tab=...), so only "/" and "/index.html" serve index.html; any other path
+ * must be a real file in the build. A dot-segment ("/.env", "/.git/...") is never served. Returns null -> 404.
  */
 export async function resolveStaticFile(root, pathname) {
   const decoded = decodeURIComponent(pathname);
   const relative = decoded.replace(/^\/+/, '') || 'index.html';
+  if (relative.split(/[\\/]/).some((segment) => segment.startsWith('.'))) return null;
   const target = path.resolve(root, relative);
   if (target !== root && !target.startsWith(`${root}${path.sep}`)) return null;
-
-  for (const candidate of [target, path.join(root, 'index.html')]) {
-    try {
-      const stat = await fs.stat(candidate);
-      if (stat.isFile()) return candidate;
-    } catch {
-      // try the next candidate (SPA fallback)
-    }
+  try {
+    const stat = await fs.stat(target);
+    if (stat.isFile()) return target;
+  } catch {
+    // not a file in the build
   }
   return null;
 }
